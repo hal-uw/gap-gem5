@@ -154,6 +154,8 @@ class TCPCntrl(TCP_Controller, CntrlBase):
             dataAccessLatency=options.TCP_latency,
         )
         self.L1cache.resourceStalls = options.no_resource_stalls
+        self.L1cache.dataArrayBanks = options.tcp_num_banks
+        self.L1cache.tagArrayBanks = options.tcp_num_banks
         self.L1cache.create(options)
         self.issue_latency = 1
         # TCP_Controller inherits this from RubyController
@@ -300,7 +302,10 @@ class TCC(RubyCache):
 class TCCCntrl(TCC_Controller, CntrlBase):
     def create(self, options, ruby_system, system):
         self.version = self.versionCount()
-        self.L2cache = TCC()
+        self.L2cache = TCC(
+            tagAccessLatency=options.tcc_tag_access_latency,
+            dataAccessLatency=options.tcc_data_access_latency,
+        )
         self.L2cache.create(options)
         self.L2cache.resourceStalls = options.no_tcc_resource_stalls
 
