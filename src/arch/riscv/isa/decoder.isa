@@ -5,6 +5,7 @@
 // Copyright (c) 2020 Barkhausen Institut
 // Copyright (c) 2021 StreamComputing Corp
 // Copyright (c) 2022 Google LLC
+// Copyright (c) 2024 University of Rostock
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -183,7 +184,7 @@ decode QUADRANT default Unknown::unknown() {
                         return std::make_shared<IllegalInstFault>("FPU is off",
                                                                    machInst);
 
-                    Mem_uw = unboxF32(boxF32(Fs2_bits));
+                    Mem_uw = unboxF32(boxF32(Fp2_bits));
                 }}, {{
                     EA = (uint32_t)(Rp1_uw + offset);
                 }});
@@ -508,7 +509,7 @@ decode QUADRANT default Unknown::unknown() {
                         return std::make_shared<IllegalInstFault>("FPU is off",
                                                                    machInst);
 
-                    Mem_uw = unboxF32(boxF32(Fs2_bits));
+                    Mem_uw = unboxF32(boxF32(Fc2_bits));
                 }}, {{
                     EA = (uint32_t)(sp_uw + offset);
                 }});
@@ -2986,7 +2987,7 @@ decode QUADRANT default Unknown::unknown() {
                         // The encodings corresponding to the masked versions
                         // (vm=0) of vfmv.f.s are reserved
                         0x1: VectorNonSplitFormat::vfmv_f_s({{
-                            freg_t fd = freg(Vs2_vu[0]);
+                            freg_t fd = freg(ftype<et>(Vs2_vu[0]));
                             Fd_bits = fd.v;
                         }}, OPFVV, VectorMiscOp);
                     }
