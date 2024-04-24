@@ -8535,7 +8535,7 @@ namespace VegaISA
 
         for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
             if (wf->execMask(lane)) {
-                threadMask = ((1LL << lane) - 1LL);
+                threadMask = ((1ULL << lane) - 1ULL);
                 vdst[lane] = popCount(src0[lane] & bits(threadMask, 31, 0)) +
                              src1[lane];
             }
@@ -8585,7 +8585,7 @@ namespace VegaISA
 
         for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
             if (wf->execMask(lane)) {
-                threadMask = ((1LL << lane) - 1LL);
+                threadMask = ((1ULL << lane) - 1ULL);
                 vdst[lane] = popCount(src0[lane] & bits(threadMask, 63, 32)) +
                              src1[lane];
             }
