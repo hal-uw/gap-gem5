@@ -532,8 +532,8 @@ CacheMemoryStats::CacheMemoryStats(statistics::Group *parent)
       ADD_STAT(numTagArrayStalls, "Number of stalls caused by tag array"),
       ADD_STAT(numDataArrayStalls, "Number of stalls caused by data array"),
       ADD_STAT(numAtomicALUOperations, "Number of atomic ALU operations"),
-      ADD_STAT(numAtomicALUArrayStalls, "Number of stalls caused by atomic
-                                        ALU array"),
+      ADD_STAT(numAtomicALUArrayStalls, "Number of stalls caused by atomic "
+                                        "ALU array"),
       ADD_STAT(htmTransCommitReadSet, "Read set size of a committed "
                                       "transaction"),
       ADD_STAT(htmTransCommitWriteSet, "Write set size of a committed "
