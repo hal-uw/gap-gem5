@@ -1121,6 +1121,7 @@ machine(MachineType:TCC, "TCC Cache")
     wardb_writeAtomicResponseDirtyBytes;
     pa_performAtomic;
     baplr_sendBypassedAtomicPerformedLocallyResponse;
+    wada_wakeUpAllDependentsAddr;
     pr_popResponseQueue;
   }
 
