@@ -255,7 +255,8 @@ class Request : public Extensible<Request>
          * These flags are *not* cleared when a Request object is
          * reused (assigned a new address).
          */
-        STICKY_FLAGS = INST_FETCH
+        STICKY_FLAGS = INST_FETCH,
+        HAS_NO_ADDR                = 0x0001000000000000,
     };
     static const FlagsType STORE_NO_DATA = CACHE_BLOCK_ZERO |
         CLEAN | INVALIDATE;
@@ -1013,6 +1014,7 @@ class Request : public Extensible<Request>
     bool isUncacheable() const { return _flags.isSet(UNCACHEABLE); }
     bool isStrictlyOrdered() const { return _flags.isSet(STRICT_ORDER); }
     bool isInstFetch() const { return _flags.isSet(INST_FETCH); }
+    bool hasNoAddr() const { return _flags.isSet(HAS_NO_ADDR); }
     bool
     isPrefetch() const
     {

@@ -108,4 +108,5 @@ class GPUStaticInstFlags(Enum):
         "MAC",  # MAC
         "MAD",  # MAD
         "MFMA",  # MFMA
+        "HAS_NO_ADDR",  # Request has no address but goes to SQC for timing
     ]
