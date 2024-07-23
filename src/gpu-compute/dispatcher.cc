@@ -205,8 +205,9 @@ GPUDispatcher::exec()
                 break;
             } else if (!launched) {
                 launched = true;
+                DPRINTF(GPUKernelInfo, "Launched kernel %d for WG %d\n",
+                                exec_id, disp_count);
                 disp_count++;
-                DPRINTF(GPUKernelInfo, "Launched kernel %d\n", exec_id);
             }
         }
 
