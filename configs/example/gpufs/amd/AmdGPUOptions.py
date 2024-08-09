@@ -266,14 +266,14 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
-            "--dgpu",
-            action="store_true",
-            default=False,
-            help="Configure the system as a dGPU instead of an APU."
-            "The dGPU config has its own local memory pool and is not "
-            "coherent with the host through hardware.  Data is "
-            "transfered from host to device memory using runtime calls "
-            "that copy data over a PCIe-like IO bus.",
+        "--dgpu",
+        action="store_true",
+        default=False,
+        help="Configure the system as a dGPU instead of an APU."
+        "The dGPU config has its own local memory pool and is not "
+        "coherent with the host through hardware.  Data is "
+        "transfered from host to device memory using runtime calls "
+        "that copy data over a PCIe-like IO bus.",
     )
 
     parser.add_argument(
