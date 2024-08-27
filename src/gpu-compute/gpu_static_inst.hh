@@ -219,6 +219,8 @@ class GPUStaticInst : public GPUStaticInstFlags
     bool isMAC() const { return _flags[MAC]; }
     bool isMAD() const { return _flags[MAD]; }
 
+    bool hasNoAddr() const { return _flags[NoAddr]; }
+
     virtual int instSize() const = 0;
 
     // only used for memory instructions
