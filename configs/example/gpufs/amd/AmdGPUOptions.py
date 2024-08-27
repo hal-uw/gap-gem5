@@ -255,7 +255,9 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
-        "--FunctionalTLB", action="store_true", help="Assumes TLB has no latency"
+        "--FunctionalTLB",
+        action="store_true",
+        help="Assumes TLB has no latency",
     )
 
     parser.add_argument(
@@ -266,14 +268,14 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
-            "--dgpu",
-            action="store_true",
-            default=False,
-            help="Configure the system as a dGPU instead of an APU."
-            "The dGPU config has its own local memory pool and is not "
-            "coherent with the host through hardware.  Data is "
-            "transfered from host to device memory using runtime calls "
-            "that copy data over a PCIe-like IO bus.",
+        "--dgpu",
+        action="store_true",
+        default=False,
+        help="Configure the system as a dGPU instead of an APU."
+        "The dGPU config has its own local memory pool and is not "
+        "coherent with the host through hardware.  Data is "
+        "transfered from host to device memory using runtime calls "
+        "that copy data over a PCIe-like IO bus.",
     )
 
     parser.add_argument(
@@ -326,4 +328,12 @@ def addAmdGPUOptions(parser):
         # response latency yet and this parameter is currently not used
         default=0,
         help="Latency for scalar responses from ruby to the cu.",
+    )
+
+    parser.add_argument(
+        "--memtime-latency",
+        type=int,
+        # Set to a default of 41 from micro-benchmarks
+        default=41,
+        help="Latency for memtimes in scalar memory pipeline.",
     )
