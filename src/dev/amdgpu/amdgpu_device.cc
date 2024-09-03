@@ -334,17 +334,43 @@ AMDGPUDevice::readFrame(PacketPtr pkt, Addr offset)
      * because this method is called by the PCIDevice::read method which
      * is a non-timing read.
      */
-    RequestPtr req = std::make_shared<Request>(offset, pkt->getSize(), 0,
+    RequestPtr req2 = std::make_shared<Request>(offset, pkt->getSize(), 0,
+                cp->shader()->cuList[0]->requestorId());
+
+    req2->requestorId(cp->shader()->cuList[0]->requestorId());
+
+    DPRINTF(AMDGPUDevice, "Performing Functional Read. CU req ID: %d \
+                    and VRAM req ID: %d\n",
+                    cp->shader()->cuList[0]->requestorId(), vramRequestorId());
+    PacketPtr readPkt2 = new Packet(req2, MemCmd::ReadReq);
+    uint8_t *dataPtr2 = new uint8_t[pkt->getSize()];
+    readPkt2->dataDynamic(dataPtr2);
+    readPkt2->setCheckOnlyCache(true);
+    readPkt2->setSuppressFuncError();
+    cp->shader()->cuList[0]->memPort[0].sendFunctional(readPkt2);
+    readPkt2->print();
+    if (readPkt2->cmd == MemCmd::FunctionalReadError) {
+        //delete dataPtr2;
+        RequestPtr req = std::make_shared<Request>(offset, pkt->getSize(), 0,
                                                vramRequestorId());
-    PacketPtr readPkt = Packet::createRead(req);
-    uint8_t *dataPtr = new uint8_t[pkt->getSize()];
-    readPkt->dataDynamic(dataPtr);
+        PacketPtr readPkt = Packet::createRead(req);
+        uint8_t *dataPtr = new uint8_t[pkt->getSize()];
+        readPkt->dataDynamic(dataPtr);
 
-    auto system = cp->shader()->gpuCmdProc.system();
-    system->getDeviceMemory(readPkt)->access(readPkt);
+        auto system = cp->shader()->gpuCmdProc.system();
+        system->getDeviceMemory(readPkt)->access(readPkt);
+        readPkt->print();
+        pkt->setUintX(readPkt->getUintX(ByteOrder::little), ByteOrder::little);
+        DPRINTF(AMDGPUDevice, "Performing phys mem access\n");
+        delete readPkt;
+    } else {
+        DPRINTF(AMDGPUDevice, "Found data in cache\n");
 
-    pkt->setUintX(readPkt->getUintX(ByteOrder::little), ByteOrder::little);
-    delete readPkt;
+        pkt->setUintX(readPkt2->getUintX(ByteOrder::little),
+                        ByteOrder::little);
+    }
+    delete readPkt2;
+
 }
 
 void

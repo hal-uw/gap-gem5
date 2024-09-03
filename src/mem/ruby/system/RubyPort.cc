@@ -391,7 +391,9 @@ void
 RubyPort::MemResponsePort::recvFunctional(PacketPtr pkt)
 {
     DPRINTF(RubyPort, "Functional access for address: %#x\n", pkt->getAddr());
-
+    if (pkt->getCheckOnlyCache()) {
+        pkt->req->requestorId(owner.m_controller->getRequestorId());
+    }
     RubySystem *rs = owner.m_ruby_system;
 
     // Check for pio requests and directly send them to the dedicated

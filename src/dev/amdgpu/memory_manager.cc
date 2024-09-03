@@ -123,6 +123,8 @@ AMDGPUMemoryManager::readRequest(Addr addr, uint8_t *data, int size,
             requestStatus.at(requestId).sentLastChunk = true;
         }
 
+        DPRINTF(AMDGPUMem, "Sending timing request to DMA here\n");
+
         if (!_gpuMemPort.sendTimingReq(pkt)) {
             DPRINTF(AMDGPUMem, "Request to %#lx needs retry\n", gen.addr());
             _gpuMemPort.retries.push_back(pkt);

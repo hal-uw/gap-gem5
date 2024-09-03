@@ -685,7 +685,7 @@ SDMAEngine::copy(SDMAQueue *q, sdmaCopy *pkt)
 
             DPRINTF(SDMAEngine, "Copying chunk of %d bytes from %#lx (%#lx)\n",
                     gen.size(), gen.addr(), chunk_addr);
-
+            // Should be replaced with a read into TCC
             gpuDevice->getMemMgr()->readRequest(chunk_addr, dmaBuffer,
                                                 gen.size(), 0,
                                                 gen.last() ? cb : nullptr);

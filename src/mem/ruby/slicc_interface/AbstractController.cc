@@ -41,6 +41,7 @@
 #include "mem/ruby/slicc_interface/AbstractController.hh"
 
 #include "debug/RubyQueue.hh"
+#include "debug/RubySystem.hh"
 #include "mem/ruby/network/Network.hh"
 #include "mem/ruby/protocol/MemoryMsg.hh"
 #include "mem/ruby/system/RubySystem.hh"
@@ -183,8 +184,8 @@ AbstractController::wakeUpBuffers(Addr addr)
 {
     if (m_waiting_buffers.count(addr) > 0) {
         //
-        // Wake up all possible lower rank (i.e. lower priority) buffers that could
-        // be waiting on this message.
+        // Wake up all possible lower rank (i.e. lower priority) buffers
+        // that could be waiting on this message.
         //
         for (int in_port_rank = m_cur_in_port - 1;
              in_port_rank >= 0;
@@ -248,7 +249,8 @@ AbstractController::wakeUpAllBuffers()
              wokeUpMsgVecs.push_back(buf_iter->second);
         }
 
-        for (std::vector<MsgVecType*>::iterator wb_iter = wokeUpMsgVecs.begin();
+        for (std::vector<MsgVecType*>::iterator wb_iter =
+                        wokeUpMsgVecs.begin();
              wb_iter != wokeUpMsgVecs.end();
              ++wb_iter) {
              delete (*wb_iter);
@@ -355,6 +357,7 @@ void
 AbstractController::functionalMemoryRead(PacketPtr pkt)
 {
     // read from mem. req. queue if write data is pending there
+    DPRINTF(RubySystem, "Performing functionalMemoryRead\n");
     MessageBuffer *req_queue = getMemReqQueue();
     if (!req_queue || !req_queue->functionalRead(pkt))
         memoryPort.sendFunctional(pkt);

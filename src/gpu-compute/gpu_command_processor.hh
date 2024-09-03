@@ -85,11 +85,28 @@ class GPUCommandProcessor : public DmaVirtDevice
     Shader* shader();
     GPUComputeDriver* driver();
 
+    struct ToBeDeleted
+    {
+        AMDKernelCode *akc;
+        void *raw_pkt;
+        uint32_t queue_id;
+        Addr host_pkt_addr;
+        PacketPtr readPkt;
+    };
+
+    std::list<struct ToBeDeleted> toBeDeletedList;
+
     enum AgentCmd
     {
       Nop = 0,
       Steal = 1
     };
+
+    void performTimingRead(Packet *read_pkt);
+
+    void completeTimingRead();
+
+    void printPacket(Packet *pkt);
 
     void submitAgentDispatchPkt(void *raw_pkt, uint32_t queue_id,
                            Addr host_pkt_addr);

@@ -40,7 +40,9 @@
 #include "debug/GPUInitAbi.hh"
 #include "debug/GPUKernelInfo.hh"
 #include "dev/amdgpu/amdgpu_device.hh"
+#include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/dispatcher.hh"
+#include "gpu-compute/shader.hh"
 #include "mem/abstract_mem.hh"
 #include "mem/packet_access.hh"
 #include "mem/se_translating_port_proxy.hh"
@@ -97,6 +99,52 @@ GPUCommandProcessor::translate(Addr vaddr, Addr size)
     return TranslationGenPtr(
         new AMDGPUVM::UserTranslationGen(&gpuDevice->getVM(), walker,
                                          1 /* vmid */, vaddr, size));
+}
+
+void
+GPUCommandProcessor::printPacket(PacketPtr pkt)
+{
+        uint8_t size = pkt->getSize();
+        uint8_t *data_ptr = new uint8_t[size];
+        pkt->writeData(data_ptr);
+        Addr pkt_addr = pkt->getAddr();
+        DPRINTF(GPUCommandProc, "The address of the packet is %lu\n",
+                        pkt_addr);
+        DPRINTF(GPUCommandProc, "The data in the pointer is \n");
+        for (int i = 0; i < size; ++i)
+        {
+                DPRINTF(GPUCommandProc, "%d ", data_ptr[i]);
+        }
+        DPRINTF(GPUCommandProc, "\n");
+}
+
+void
+GPUCommandProcessor::performTimingRead(PacketPtr read_pkt)
+{
+        ComputeUnit *cu = shader()->cuList[0];
+        read_pkt->senderState =
+                new ComputeUnit::SQCPort::SenderState(cu->wfList[0][0]);
+        ComputeUnit::SQCPort::SenderState *sender_state =
+                safe_cast<ComputeUnit::SQCPort::SenderState*>
+                (read_pkt->senderState);
+        ComputeUnit::SQCPort sqc_port = cu->sqcPort;
+        if (!sqc_port.sendTimingReq(read_pkt)) {
+                sqc_port.retries.push_back(std::pair<PacketPtr, Wavefront*>
+                                (read_pkt, sender_state->wavefront));
+        }
+}
+
+void
+GPUCommandProcessor::completeTimingRead()
+{
+        struct ToBeDeleted toBeDeleted = toBeDeletedList.front();
+        toBeDeletedList.pop_front();
+        printPacket(toBeDeleted.readPkt);
+        delete toBeDeleted.readPkt;
+        if (toBeDeletedList.size() == 0)
+                dispatchKernelObject(toBeDeleted.akc, toBeDeleted.raw_pkt,
+                                toBeDeleted.queue_id,
+                                toBeDeleted.host_pkt_addr);
 }
 
 /**
@@ -220,16 +268,23 @@ GPUCommandProcessor::submitDispatchPkt(void *raw_pkt, uint32_t queue_id,
                 RequestPtr request = std::make_shared<Request>(chunk_addr,
                     akc_alignment_granularity, flags,
                     walker->getDevRequestor());
-                Packet *readPkt = new Packet(request, MemCmd::ReadReq);
+                PacketPtr readPkt = new Packet(request, MemCmd::ReadReq);
                 readPkt->dataStatic((uint8_t *)akc + gen.complete());
                 // If the request spans two device memories, the device memory
                 // returned will be null.
                 assert(system()->getDeviceMemory(readPkt) != nullptr);
-                system()->getDeviceMemory(readPkt)->access(readPkt);
-                delete readPkt;
+                // system()->getDeviceMemory(readPkt)->access(readPkt);
+                struct ToBeDeleted toBeDeleted;
+                toBeDeleted.akc = akc;
+                toBeDeleted.raw_pkt = raw_pkt;
+                toBeDeleted.queue_id = queue_id;
+                toBeDeleted.host_pkt_addr = host_pkt_addr;
+                toBeDeleted.readPkt = readPkt;
+                toBeDeletedList.push_back(toBeDeleted);
+                performTimingRead(readPkt);
             }
+            DPRINTF(GPUCommandProc, "Completed the submissions");
 
-            dispatchKernelObject(akc, raw_pkt, queue_id, host_pkt_addr);
         }
     }
 }
@@ -606,7 +661,8 @@ GPUCommandProcessor::submitAgentDispatchPkt(void *raw_pkt, uint32_t queue_id,
         //*return_address = signal_addr;
         Addr *new_signal_addr = new Addr;
         *new_signal_addr  = (Addr)signal_addr;
-        dmaWriteVirt(return_address, sizeof(Addr), nullptr, new_signal_addr, 0);
+        dmaWriteVirt(return_address, sizeof(Addr), nullptr,
+                        new_signal_addr, 0);
 
         DPRINTF(GPUCommandProc,
             "Agent Dispatch Packet Stealing signal handle from kid %d :" \
@@ -663,6 +719,7 @@ GPUCommandProcessor::initABI(HSAQueueEntry *task)
 void
 GPUCommandProcessor::sanityCheckAKC(AMDKernelCode *akc)
 {
+    DPRINTF(GPUInitAbi, "Nagendra...beginning of sanity check\n");
     DPRINTF(GPUInitAbi, "group_segment_fixed_size: %d\n",
             akc->group_segment_fixed_size);
     DPRINTF(GPUInitAbi, "private_segment_fixed_size: %d\n",
@@ -749,6 +806,7 @@ GPUCommandProcessor::sanityCheckAKC(AMDKernelCode *akc)
     DPRINTF(GPUInitAbi, "kernarg_preload_spec_offset: %d\n",
             akc->kernarg_preload_spec_offset);
 
+    DPRINTF(GPUInitAbi, "Nagendra...end of sanity check\n");
 
     // Check for features not implemented in gem5
     fatal_if(akc->wgp_mode, "WGP mode not supported\n");

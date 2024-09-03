@@ -842,7 +842,8 @@ MemCtrl::memBusy(MemInterface* mem_intr) {
     // Default to busy status and update based on interface specifics
     // Default state of unused interface is 'true'
     bool mem_busy = true;
-    bool all_writes_nvm = mem_intr->numWritesQueued == mem_intr->writeQueueSize;
+    bool all_writes_nvm = mem_intr->numWritesQueued ==
+            mem_intr->writeQueueSize;
     bool read_queue_empty = mem_intr->readQueueSize == 0;
     mem_busy = mem_intr->isBusy(read_queue_empty, all_writes_nvm);
     if (mem_busy) {
@@ -1125,7 +1126,8 @@ MemCtrl::processNextReqEvent(MemInterface* mem_intr,
 
         if (mem_intr->writeQueueSize == 0 ||
             (below_threshold && drainState() != DrainState::Draining) ||
-            (mem_intr->readQueueSize && mem_intr->writesThisTime >= minWritesPerSwitch) ||
+            (mem_intr->readQueueSize &&
+             mem_intr->writesThisTime >= minWritesPerSwitch) ||
             (mem_intr->readQueueSize && (nvmWriteBlock(mem_intr)))) {
 
             // turn the bus back around for reads again
@@ -1374,6 +1376,7 @@ MemCtrl::CtrlStats::regStats()
 void
 MemCtrl::recvFunctional(PacketPtr pkt)
 {
+    DPRINTF(MemCtrl, "In recvFunctional() in MemCtrl\n");
     bool found = recvFunctionalLogic(pkt, dram);
 
     panic_if(!found, "Can't handle address range for packet %s\n",

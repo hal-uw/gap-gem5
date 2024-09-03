@@ -146,6 +146,10 @@ RubySystem::registerRequestorIDs()
     for (auto& cntrl : m_abs_cntrl_vec) {
         RequestorID id = cntrl->getRequestorId();
         MachineID mach_id = cntrl->getMachineID();
+        DPRINTF(RubySystem, "Registering RequestorID. id %d, network id %d, \
+                        machine type %s\n",
+                        id, machineToNetwork[mach_id],
+                        MachineIDToString(mach_id).c_str());
 
         // These are setup in Network constructor and should exist
         fatal_if(!machineToNetwork.count(mach_id),
@@ -534,14 +538,22 @@ RubySystem::functionalRead(PacketPtr pkt)
     // In this loop we count the number of controllers that have the given
     // address in read only, read write and busy states.
     for (auto& cntrl : netCntrls[request_net_id]) {
+        DPRINTF(RubySystem, "Machine Type is %s for requestor ID %d,\
+                        cntroller ID %d, and network ID %d\n",
+                        MachineIDToString(cntrl->getMachineID()),
+                        cntrl->getRequestorId(),pkt->requestorId(),
+                        request_net_id);
         access_perm = cntrl-> getAccessPermission(line_address);
         if (access_perm == AccessPermission_Read_Only){
             num_ro++;
             if (ctrl_ro == nullptr) ctrl_ro = cntrl;
+            DPRINTF(RubyCacheTrace, "func access RO\n");
         }
         else if (access_perm == AccessPermission_Read_Write){
             num_rw++;
             if (ctrl_rw == nullptr) ctrl_rw = cntrl;
+            DPRINTF(RubyCacheTrace, "func access RW\n");
+
         }
         else if (access_perm == AccessPermission_Busy)
             num_busy++;
@@ -549,12 +561,14 @@ RubySystem::functionalRead(PacketPtr pkt)
             num_maybe_stale++;
         else if (access_perm == AccessPermission_Backing_Store) {
             // See RubySlicc_Exports.sm for details, but Backing_Store is meant
-            // to represent blocks in memory *for Broadcast/Snooping protocols*,
-            // where memory has no idea whether it has an exclusive copy of data
-            // or not.
+            // to represent blocks in memory
+            // *for Broadcast/Snooping protocols*, where memory has no idea
+            // whether it has an exclusive copy of data or not.
             num_backing_store++;
             if (ctrl_backing_store == nullptr)
                 ctrl_backing_store = cntrl;
+            DPRINTF(RubyCacheTrace, "func access Backing\n");
+
         }
         else if (access_perm == AccessPermission_Invalid ||
                  access_perm == AccessPermission_NotPresent)
@@ -567,11 +581,15 @@ RubySystem::functionalRead(PacketPtr pkt)
     // the cache hierarchy, otherwise you want to try to read the RO or RW
     // copies existing in the cache hierarchy (covered by the else statement).
     // The reason is because the Backing_Store memory could easily be stale, if
-    // there are copies floating around the cache hierarchy, so you want to read
-    // it only if it's not in the cache hierarchy at all.
+    // there are copies floating around the cache hierarchy, so you want to
+    // read it only if it's not in the cache hierarchy at all.
     int num_controllers = netCntrls[request_net_id].size();
     if (num_invalid == (num_controllers - 1) && num_backing_store == 1) {
-        DPRINTF(RubySystem, "only copy in Backing_Store memory, read from it\n");
+        if (pkt->getCheckOnlyCache()) {
+            return false;
+        }
+        DPRINTF(RubySystem,
+                        "only copy in Backing_Store memory, read from it\n");
         ctrl_backing_store->functionalRead(line_address, pkt);
         return true;
     } else if (num_ro > 0 || num_rw >= 1) {

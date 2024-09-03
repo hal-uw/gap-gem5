@@ -53,5 +53,5 @@ class Terminal(SerialDevice):
     port = Param.HostSocket(3456, "listen port/socket")
     number = Param.Int(0, "terminal number")
     outfile = Param.TerminalDump(
-        "file", "Selects if and where the terminal is dumping its output"
+        "stdoutput", "Selects if and where the terminal is dumping its output"
     )

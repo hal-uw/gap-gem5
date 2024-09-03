@@ -45,6 +45,7 @@
 #include "base/loader/memory_image.hh"
 #include "base/loader/object_file.hh"
 #include "cpu/thread_context.hh"
+#include "debug/AddrRanges.hh"
 #include "debug/LLSC.hh"
 #include "debug/MemoryAccess.hh"
 #include "mem/packet_access.hh"
@@ -108,7 +109,7 @@ AbstractMemory::setBackingStore(uint8_t* pmem_addr)
     // If there was an existing backdoor, let everybody know it's going away.
     if (backdoor.ptr())
         backdoor.invalidate();
-
+    DPRINTF(AddrRanges, "Setting backing store to %p\n", (void *)pmem_addr);
     // The back door can't handle interleaved memory.
     backdoor.ptr(range.interleaved() ? nullptr : pmem_addr);
 
@@ -301,30 +302,30 @@ AbstractMemory::checkLockedAddrList(PacketPtr pkt)
     // Iterate over list.  Note that there could be multiple matching records,
     // as more than one context could have done a load locked to this location.
     // Only remove records when we succeed in finding a record for (xc, addr);
-    // then, remove all records with this address.  Failed store-conditionals do
+    // then, remove all records with this address. Failed store-conditionals do
     // not blow unrelated reservations.
     std::list<LockedAddr>::iterator i = lockedAddrList.begin();
 
     if (isLLSC) {
         while (i != lockedAddrList.end()) {
             if (i->addr == paddr && i->matchesContext(req)) {
-                // it's a store conditional, and as far as the memory system can
-                // tell, the requesting context's lock is still valid.
+                // it's a store conditional, and as far as the memory system
+                // can tell, the requesting context's lock is still valid.
                 DPRINTF(LLSC, "StCond success: context %d addr %#x\n",
                         req->contextId(), paddr);
                 allowStore = true;
                 break;
             }
-            // If we didn't find a match, keep searching!  Someone else may well
-            // have a reservation on this line here but we may find ours in just
-            // a little while.
+            // If we didn't find a match, keep searching! Someone else may well
+            // have a reservation on this line here but we may find ours
+            // in just a little while.
             i++;
         }
         req->setExtraData(allowStore ? 1 : 0);
     }
     // LLSCs that succeeded AND non-LLSC stores both fall into here:
     if (allowStore) {
-        // We write address paddr.  However, there may be several entries with a
+        // We write address paddr. However, there may be several entries with a
         // reservation on this address (for other contextIds) and they must all
         // be removed.
         i = lockedAddrList.begin();
@@ -447,6 +448,7 @@ AbstractMemory::access(PacketPtr pkt)
         }
         if (pmemAddr) {
             pkt->setData(host_addr);
+            DPRINTF(AddrRanges, "Reading data from %p\n", (void *)pmemAddr);
         }
         TRACE_PACKET(pkt->req->isInstFetch() ? "IFetch" : "Read");
         if (collectStats) {
@@ -490,11 +492,14 @@ AbstractMemory::functionalAccess(PacketPtr pkt)
 {
     assert(pkt->getAddrRange().isSubset(range));
 
+    DPRINTF(MemoryAccess, "Inside functionalAccess\n");
     uint8_t *host_addr = toHostAddr(pkt->getAddr());
 
     if (pkt->isRead()) {
         if (pmemAddr) {
             pkt->setData(host_addr);
+            assert(host_addr != pkt->getPtr<uint8_t>());
+            DPRINTF(AddrRanges, "Reading data from %p\n", (void *)pmemAddr);
         }
         TRACE_PACKET("Read");
         pkt->makeResponse();

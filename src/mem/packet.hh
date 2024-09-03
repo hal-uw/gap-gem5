@@ -419,6 +419,8 @@ class Packet : public Printable, public Extensible<Packet>
      */
     uint64_t htmTransactionUid;
 
+    bool checkOnlyCache;
+
   public:
 
     /**
@@ -754,8 +756,8 @@ class Packet : public Printable, public Extensible<Packet>
     }
     bool satisfied() const { return flags.isSet(SATISFIED); }
 
-    void setSuppressFuncError()     { flags.set(SUPPRESS_FUNC_ERROR); }
-    bool suppressFuncError() const  { return flags.isSet(SUPPRESS_FUNC_ERROR); }
+    void setSuppressFuncError()    { flags.set(SUPPRESS_FUNC_ERROR); }
+    bool suppressFuncError() const { return flags.isSet(SUPPRESS_FUNC_ERROR); }
     void setBlockCached()          { flags.set(BLOCK_CACHED); }
     bool isBlockCached() const     { return flags.isSet(BLOCK_CACHED); }
     void clearBlockCached()        { flags.clear(BLOCK_CACHED); }
@@ -888,7 +890,10 @@ class Packet : public Printable, public Extensible<Packet>
             addr = req->getPaddr();
             flags.set(VALID_ADDR);
             _isSecure = req->isSecure();
+
         }
+
+        checkOnlyCache = false;
 
         /**
          * hardware transactional memory
@@ -932,6 +937,8 @@ class Packet : public Printable, public Extensible<Packet>
         }
         size = _blkSize;
         flags.set(VALID_SIZE);
+        checkOnlyCache = false;
+
     }
 
     /**
@@ -984,6 +991,7 @@ class Packet : public Printable, public Extensible<Packet>
                 allocate();
             }
         }
+        checkOnlyCache = false;
     }
 
     /**
@@ -1302,6 +1310,17 @@ class Packet : public Printable, public Extensible<Packet>
             // one to the other, e.g. a forwarded response to a response
             std::memcpy(getPtr<uint8_t>(), p, getSize());
         }
+    }
+
+    void
+    setCheckOnlyCache(bool flag) {
+        checkOnlyCache = flag;
+    }
+
+    bool
+    getCheckOnlyCache()
+    {
+        return checkOnlyCache;
     }
 
     /**
