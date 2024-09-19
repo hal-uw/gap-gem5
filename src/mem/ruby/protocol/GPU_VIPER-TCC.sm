@@ -182,7 +182,8 @@ machine(MachineType:TCC, "TCC Cache")
     if(is_valid(tbe)) {
       testAndRead(addr, tbe.DataBlk, pkt);
     } else {
-      functionalMemoryRead(pkt);
+      // functionalMemoryRead(pkt);
+      testAndRead(addr, getCacheEntry(addr).DataBlk, pkt);
     }
   }
 

@@ -357,7 +357,7 @@ void
 AbstractController::functionalMemoryRead(PacketPtr pkt)
 {
     // read from mem. req. queue if write data is pending there
-    DPRINTF(RubySystem, "Performing functionalMemoryRead\n");
+    DPRINTF(RubyQueue, "Performing functionalMemoryRead\n");
     MessageBuffer *req_queue = getMemReqQueue();
     if (!req_queue || !req_queue->functionalRead(pkt))
         memoryPort.sendFunctional(pkt);
