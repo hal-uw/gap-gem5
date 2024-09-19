@@ -409,8 +409,6 @@ ComputeUnit::doInvalidate(RequestPtr req, int kernId){
 
     // kern_id will be used in inv responses
     gpuDynInst->kern_id = kernId;
-    // update contextId field
-    req->setContext(gpuDynInst->wfDynId);
 
     injectGlobalMemFence(gpuDynInst, true, req);
 }

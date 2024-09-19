@@ -38,6 +38,7 @@
 #include "dev/amdgpu/interrupt_handler.hh"
 #include "dev/amdgpu/sdma_commands.hh"
 #include "dev/amdgpu/sdma_mmio.hh"
+#include "gpu-compute/gpu_command_processor.hh"
 #include "mem/packet.hh"
 #include "mem/packet_access.hh"
 #include "params/SDMAEngine.hh"
@@ -648,9 +649,27 @@ SDMAEngine::writeDone(SDMAQueue *q, sdmaWrite *pkt, uint32_t *dmaBuffer)
 {
     DPRINTF(SDMAEngine, "Write packet completed to %p, %d dwords\n",
             pkt->dest, pkt->count);
-    delete []dmaBuffer;
+
+    auto cleanup_cb = new EventFunctionWrapper(
+        [ = ]{ writeCleanup(dmaBuffer); }, name());
+
+    auto system_ptr = gpuDevice->CP()->system();
+    if (!system_ptr->isAtomicMode()) {
+        warn_once("SDMA cleanup assumes 2000 tick timing for completion."
+                " This has not been tested in timing mode\n");
+    }
+
+    // Only 2000 ticks should be necessary, but add additional padding.
+    schedule(cleanup_cb, curTick() + 10000);
+
     delete pkt;
     decodeNext(q);
+}
+
+void
+SDMAEngine::writeCleanup(uint32_t *dmaBuffer)
+{
+    delete [] dmaBuffer;
 }
 
 /* Implements a copy packet. */
@@ -679,17 +698,18 @@ SDMAEngine::copy(SDMAQueue *q, sdmaCopy *pkt)
         // Copy the minimum page size at a time in case the physical addresses
         // are not contiguous.
         ChunkGenerator gen(pkt->source, pkt->count, AMDGPU_MMHUB_PAGE_SIZE);
+        uint8_t *buffer_ptr = dmaBuffer;
         for (; !gen.done(); gen.next()) {
             Addr chunk_addr = getDeviceAddress(gen.addr());
             assert(chunk_addr);
 
             DPRINTF(SDMAEngine, "Copying chunk of %d bytes from %#lx (%#lx)\n",
                     gen.size(), gen.addr(), chunk_addr);
-            // Should be replaced with a read into TCC
-            gpuDevice->getMemMgr()->readRequest(chunk_addr, dmaBuffer,
+
+            gpuDevice->getMemMgr()->readRequest(chunk_addr, buffer_ptr,
                                                 gen.size(), 0,
                                                 gen.last() ? cb : nullptr);
-            dmaBuffer += gen.size();
+            buffer_ptr += gen.size();
         }
     } else {
         auto cb = new DmaVirtCallback<uint64_t>(
@@ -724,6 +744,7 @@ SDMAEngine::copyReadData(SDMAQueue *q, sdmaCopy *pkt, uint8_t *dmaBuffer)
         // Copy the minimum page size at a time in case the physical addresses
         // are not contiguous.
         ChunkGenerator gen(pkt->dest, pkt->count, AMDGPU_MMHUB_PAGE_SIZE);
+        uint8_t *buffer_ptr = dmaBuffer;
         for (; !gen.done(); gen.next()) {
             Addr chunk_addr = getDeviceAddress(gen.addr());
             assert(chunk_addr);
@@ -731,11 +752,11 @@ SDMAEngine::copyReadData(SDMAQueue *q, sdmaCopy *pkt, uint8_t *dmaBuffer)
             DPRINTF(SDMAEngine, "Copying chunk of %d bytes to %#lx (%#lx)\n",
                     gen.size(), gen.addr(), chunk_addr);
 
-            gpuDevice->getMemMgr()->writeRequest(chunk_addr, dmaBuffer,
+            gpuDevice->getMemMgr()->writeRequest(chunk_addr, buffer_ptr,
                                                  gen.size(), 0,
                                                  gen.last() ? cb : nullptr);
 
-            dmaBuffer += gen.size();
+            buffer_ptr += gen.size();
         }
     } else {
         auto cb = new DmaVirtCallback<uint64_t>(
@@ -750,9 +771,27 @@ SDMAEngine::copyDone(SDMAQueue *q, sdmaCopy *pkt, uint8_t *dmaBuffer)
 {
     DPRINTF(SDMAEngine, "Copy completed to %p, %d dwords\n",
             pkt->dest, pkt->count);
-    delete []dmaBuffer;
+
+    auto cleanup_cb = new EventFunctionWrapper(
+        [ = ]{ copyCleanup(dmaBuffer); }, name());
+
+    auto system_ptr = gpuDevice->CP()->system();
+    if (!system_ptr->isAtomicMode()) {
+        warn_once("SDMA cleanup assumes 2000 tick timing for completion."
+                " This has not been tested in timing mode\n");
+    }
+
+    // Only 2000 ticks should be necessary, but add additional padding.
+    schedule(cleanup_cb, curTick() + 10000);
+
     delete pkt;
     decodeNext(q);
+}
+
+void
+SDMAEngine::copyCleanup(uint8_t *dmaBuffer)
+{
+    delete [] dmaBuffer;
 }
 
 /* Implements an indirect buffer packet. */
@@ -988,9 +1027,26 @@ SDMAEngine::ptePdeDone(SDMAQueue *q, sdmaPtePde *pkt, uint64_t *dmaBuffer)
     DPRINTF(SDMAEngine, "PtePde packet completed to %p, %d 2dwords\n",
             pkt->dest, pkt->count);
 
-    delete []dmaBuffer;
+    auto cleanup_cb = new EventFunctionWrapper(
+        [ = ]{ ptePdeCleanup(dmaBuffer); }, name());
+
+    auto system_ptr = gpuDevice->CP()->system();
+    if (!system_ptr->isAtomicMode()) {
+        warn_once("SDMA cleanup assumes 2000 tick timing for completion."
+                " This has not been tested in timing mode\n");
+    }
+
+    // Only 2000 ticks should be necessary, but add additional padding.
+    schedule(cleanup_cb, curTick() + 10000);
+
     delete pkt;
     decodeNext(q);
+}
+
+void
+SDMAEngine::ptePdeCleanup(uint64_t *dmaBuffer)
+{
+    delete [] dmaBuffer;
 }
 
 void
@@ -1078,6 +1134,7 @@ SDMAEngine::constFill(SDMAQueue *q, sdmaConstFill *pkt, uint32_t header)
         // Copy the minimum page size at a time in case the physical addresses
         // are not contiguous.
         ChunkGenerator gen(pkt->addr, fill_bytes, AMDGPU_MMHUB_PAGE_SIZE);
+        uint8_t *fill_data_ptr = fill_data;
         for (; !gen.done(); gen.next()) {
             Addr chunk_addr = getDeviceAddress(gen.addr());
             assert(chunk_addr);
@@ -1085,10 +1142,10 @@ SDMAEngine::constFill(SDMAQueue *q, sdmaConstFill *pkt, uint32_t header)
             DPRINTF(SDMAEngine, "Copying chunk of %d bytes from %#lx (%#lx)\n",
                     gen.size(), gen.addr(), chunk_addr);
 
-            gpuDevice->getMemMgr()->writeRequest(chunk_addr, fill_data,
+            gpuDevice->getMemMgr()->writeRequest(chunk_addr, fill_data_ptr,
                                                  gen.size(), 0,
                                                  gen.last() ? cb : nullptr);
-            fill_data += gen.size();
+            fill_data_ptr += gen.size();
         }
     } else {
         DPRINTF(SDMAEngine, "ConstFill %d bytes of %x to host at %lx\n",
@@ -1106,7 +1163,7 @@ SDMAEngine::constFillDone(SDMAQueue *q, sdmaConstFill *pkt, uint8_t *fill_data)
 {
     DPRINTF(SDMAEngine, "ConstFill to %lx done\n", pkt->addr);
 
-    delete fill_data;
+    delete [] fill_data;
     delete pkt;
     decodeNext(q);
 }
