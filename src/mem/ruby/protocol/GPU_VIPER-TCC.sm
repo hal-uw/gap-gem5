@@ -72,6 +72,7 @@ machine(MachineType:TCC, "TCC Cache")
     L2_Repl,                desc="L2 Replacement";
     // Probes
     PrbInv,                 desc="Invalidating probe";
+    PrbDowngrade,	    desc="Downgrading probe";
     // Coming from Memory Controller
     WBAck,                  desc="writethrough ack from memory";
     Bypass,                 desc="Bypass the entire L2 cache";
@@ -345,7 +346,11 @@ machine(MachineType:TCC, "TCC Cache")
         DPRINTF(RubySlicc, "%s\n", in_msg);
         Entry cache_entry := getCacheEntry(in_msg.addr);
         TBE tbe := TBEs.lookup(in_msg.addr);
-        trigger(Event:PrbInv, in_msg.addr, cache_entry, tbe);
+	if (!WB) {
+         trigger(Event:PrbInv, in_msg.addr, cache_entry, tbe); // Cache is not write back
+	} else { // Cache is write but data not found in cache
+	 trigger(Event:PrbDowngrade, in_msg.addr, cache_entry, tbe);
+	}
       }
     }
   }
@@ -798,6 +803,36 @@ machine(MachineType:TCC, "TCC Cache")
     }
   }
 
+  action(pd_sendProbeResponseDowngrade, "pd", desc="send probe downgrade") {
+    DPRINTF(RubySlicc, "Doing the downgrade\n");
+    enqueue(responseToNB_out, ResponseMsg, 1) {
+      out_msg.addr := address;
+      out_msg.Type := CoherenceResponseType:CPUPrbResp;  // TCC, L3  respond in same way to probes
+      out_msg.Sender := machineID;
+      out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+      if (getState(tbe, cache_entry, address) == State:V || getState(tbe, cache_entry, address) == State:I) {
+	DPRINTF(RubySlicc, "Cache is either I or V. Setting dirty to false\n");
+        out_msg.Dirty := false;
+      } else {
+	DPRINTF(RubySlicc, "Cache is M or W. Setting dirty to true\n");
+        out_msg.Dirty := true;
+      }
+      if (getState(tbe, cache_entry, address) == State:V || getState(tbe, cache_entry, address) == State:M || getState(tbe, cache_entry, address) == State:W) {
+        out_msg.Hit := true;
+        out_msg.DataBlk := cache_entry.DataBlk;
+	DPRINTF(RubySlicc, "Data found in Cache\n");
+        out_msg.MessageSize := MessageSizeType:Response_Data;
+      } else {
+	DPRINTF(RubySlicc, "Data not found in Cache\n");
+	out_msg.Hit := false;
+        out_msg.MessageSize := MessageSizeType:Response_Control;
+      }
+      out_msg.Ntsl := true;
+      out_msg.State := CoherenceState:NA;
+    }
+  }
+
+
   action(pi_sendProbeResponseInv, "pi", desc="send probe ack inv, no data") {
     enqueue(responseToNB_out, ResponseMsg, 1) {
       out_msg.addr := address;
@@ -1189,6 +1224,25 @@ machine(MachineType:TCC, "TCC Cache")
   transition({A, IV, WI, WIB}, L2_Repl) {
     i_invL2;
   }
+
+ transition(I, PrbDowngrade) {TagArrayRead, TagArrayWrite} {
+    pd_sendProbeResponseDowngrade;
+    pp_popProbeQueue;
+ }
+
+ transition(V, PrbDowngrade) {TagArrayRead, TagArrayWrite} {
+    pd_sendProbeResponseDowngrade;
+    pp_popProbeQueue;
+ }
+
+ transition({M, W}, PrbDowngrade, WI) {TagArrayRead, TagArrayWrite} {
+    pd_sendProbeResponseDowngrade;
+    pp_popProbeQueue;
+ }
+
+ transition({A, IV, WI, WIB}, PrbDowngrade) {TagArrayRead, TagArrayWrite} {
+    st_stallAndWaitRequest;
+ }
 
   transition({I, V}, PrbInv, I) {TagArrayRead, TagArrayWrite} {
     pi_sendProbeResponseInv;
