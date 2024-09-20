@@ -1032,22 +1032,17 @@ ComputeUnit::DataPort::recvReqRetry()
 bool
 ComputeUnit::SQCPort::recvTimingResp(PacketPtr pkt)
 {
-    DPRINTF(GPUMem, "Reached this point\n");
     RequestPtr req = pkt->req;
     Flags flags = req->getFlags();
-    DPRINTF(GPUMem, "The flags are %d\n", flags);
     SenderState *sender_state = safe_cast<SenderState*>(pkt->senderState);
     /** Process the response only if there is a wavefront associated with it.
      * Otherwise, it is from SQC invalidate that was issued at kernel start
      * and doesn't have a wavefront or instruction associated with it.
      */
     if (sender_state->wavefront != nullptr) {
-        DPRINTF(GPUMem, "Reaching point 2...Nagendra\n");
         RequestPtr req = pkt->req;
         Flags flags = req->getFlags();
-        DPRINTF(GPUMem, "The flags are %d\n", flags);
         if (flags == Request::PHYSICAL) {
-                DPRINTF(GPUMem, "Reached this point...Nagendra");
                 computeUnit->shader->gpuCmdProc.completeTimingRead();
         } else
                 computeUnit->handleSQCReturn(pkt);

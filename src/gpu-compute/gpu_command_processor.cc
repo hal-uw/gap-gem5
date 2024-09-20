@@ -719,7 +719,6 @@ GPUCommandProcessor::initABI(HSAQueueEntry *task)
 void
 GPUCommandProcessor::sanityCheckAKC(AMDKernelCode *akc)
 {
-    DPRINTF(GPUInitAbi, "Nagendra...beginning of sanity check\n");
     DPRINTF(GPUInitAbi, "group_segment_fixed_size: %d\n",
             akc->group_segment_fixed_size);
     DPRINTF(GPUInitAbi, "private_segment_fixed_size: %d\n",
@@ -806,7 +805,6 @@ GPUCommandProcessor::sanityCheckAKC(AMDKernelCode *akc)
     DPRINTF(GPUInitAbi, "kernarg_preload_spec_offset: %d\n",
             akc->kernarg_preload_spec_offset);
 
-    DPRINTF(GPUInitAbi, "Nagendra...end of sanity check\n");
 
     // Check for features not implemented in gem5
     fatal_if(akc->wgp_mode, "WGP mode not supported\n");
