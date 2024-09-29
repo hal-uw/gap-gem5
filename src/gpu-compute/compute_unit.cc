@@ -1038,7 +1038,13 @@ ComputeUnit::SQCPort::recvTimingResp(PacketPtr pkt)
      * and doesn't have a wavefront or instruction associated with it.
      */
     if (sender_state->wavefront != nullptr) {
-        computeUnit->handleSQCReturn(pkt);
+            RequestPtr req = pkt->req;
+            Flags flags = req->getFlags();
+            if (flags == Request::PHYSICAL) {
+            computeUnit->shader->gpuCmdProc.completeTimingRead();
+            } else {
+            computeUnit->handleSQCReturn(pkt);
+        }
     }
 
     return true;
