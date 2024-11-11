@@ -1,0 +1,85 @@
+diff a/configs/ruby/GPU_VIPER.py b/configs/ruby/GPU_VIPER.py	(rejected hunks)
+@@ -672,28 +676,67 @@ def construct_gpudirs(options, system, ruby_system, network):
+ 
+         # Create memory controllers too
+         mem_type = ObjectList.mem_list.get(options.dgpu_mem_type)
+-        dram_intf = MemConfig.create_mem_intf(
+-            mem_type,
+-            gpu_mem_range,
+-            i,
+-            int(math.log(options.dgpu_num_dirs, 2)),
+-            options.cacheline_size,
+-            xor_low_bit,
++        use_HBM_controller = (
++            issubclass(mem_type, DRAMInterface) and options.hbm
+         )
+-        if issubclass(mem_type, DRAMInterface):
+-            mem_ctrl = m5.objects.MemCtrl(dram=dram_intf)
++        if not use_HBM_controller:
++            dram_intf = MemConfig.create_mem_intf(
++                #mem_type,
++                SimpleMemory,#(bandwidth="128GiB/s"),
++                gpu_mem_range,
++                i,
++                int(math.log(options.dgpu_num_dirs, 2)),
++                options.cacheline_size,
++                xor_low_bit,
++            )
++            if False and issubclass(mem_type, DRAMInterface):
++                mem_ctrl = m5.objects.MemCtrl(dram=dram_intf)
++            else:
++                mem_ctrl = dram_intf
++            dir_cntrl.addr_ranges = dram_intf.range
++            print("dram_intf.range", dram_intf.range)
++            mem_ctrl.port = dir_cntrl.memory_out_port
++            #mem_ctrl.dram.enable_dram_powerdown = False
++            mem_ctrls.append(mem_ctrl)
+         else:
+-            mem_ctrl = dram_intf
+-
+-        mem_ctrl.port = dir_cntrl.memory_out_port
+-        mem_ctrl.dram.enable_dram_powerdown = False
+-        dir_cntrl.addr_ranges = dram_intf.range
++            ##set up HBM controllers
++            intlv_low_bit = block_size_bits
++            intlv_bits = math.log(options.dgpu_num_dirs, 2)
++            mask_list = []
++
++            for ib in range(int(intlv_bits)):
++                mask_list.append(1 << int(ib + intlv_low_bit))
++            mask_list.insert(0, 1 << 6)
++            
++            dram_intf_1 = MemConfig.create_mem_intf(
++                HBM_2000_4H_1x64,
++                gpu_mem_range,
++                (2 * i),
++                int(math.log(options.dgpu_num_dirs, 2)) + 1,
++                options.cacheline_size,
++                xor_low_bit,
++            )
++            #dram_intf_1 = HBM_2000_4H_1x64(range=AddrRange(start = '0', size = '16GB', masks = mask_list, intlvMatch=(i << 1) | 0))
++            
++            dram_intf_2 = MemConfig.create_mem_intf(
++                HBM_2000_4H_1x64,
++                gpu_mem_range,
++                (2 * i) + 1,
++                int(math.log(options.dgpu_num_dirs, 2)) + 1,
++                options.cacheline_size,
++                xor_low_bit,
++            )
++            #dram_intf_2 = HBM_2000_4H_1x64(range=AddrRange(start = '0', size = '16GB', masks = mask_list, intlvMatch=(i << 1) | 1))
++            #dram_intf_1.kvm_map = False
++            #dram_intf_2.kvm_map = False
++            mem_ctrl = m5.objects.HBMCtrl(dram=dram_intf_1, dram_2=dram_intf_2)
++            dir_cntrl.addr_ranges = [dram_intf_1.range, dram_intf_2.range]
++            mem_ctrl.port = dir_cntrl.memory_out_port
++            mem_ctrls.append(mem_ctrl)
+ 
+         # Append
+         exec("system.ruby.gpu_dir_cntrl%d = dir_cntrl" % i)
+         dir_cntrl_nodes.append(dir_cntrl)
+-        mem_ctrls.append(mem_ctrl)
+-
+     system.gpu_mem_ctrls = mem_ctrls
+ 
+     return dir_cntrl_nodes, mem_ctrls

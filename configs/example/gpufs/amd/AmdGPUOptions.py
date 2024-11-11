@@ -306,3 +306,10 @@ def addAmdGPUOptions(parser):
         default=0,
         help="Latency for scalar responses from ruby to the cu.",
     )
+
+    parser.add_argument(
+        "--hbm-ctrl",
+        action="store_true",
+        default=False,
+        help="Use HBMCtrl",
+    )
