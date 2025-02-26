@@ -61,6 +61,16 @@ class DisjointSimple(SimpleNetwork):
         _topo = topo_class(controllers)
         _topo.makeTopology(opts, self, SimpleIntLink, SimpleExtLink, Switch)
 
+        for link in self.int_links:
+            link.bandwidth_factor = (
+                16 * opts.num_compute_units * opts.bw_scalor
+            )
+
+        for link in self.ext_links:
+            link.bandwidth_factor = (
+                16 * opts.num_compute_units * opts.bw_scalor
+            )
+
         self.initSimple(opts, self.int_links, self.ext_links)
 
     def initSimple(self, opts, int_links, ext_links):
