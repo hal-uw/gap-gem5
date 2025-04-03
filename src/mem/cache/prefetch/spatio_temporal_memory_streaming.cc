@@ -29,7 +29,6 @@
 #include "mem/cache/prefetch/spatio_temporal_memory_streaming.hh"
 
 #include "debug/HWPrefetch.hh"
-#include "mem/cache/prefetch/associative_set_impl.hh"
 #include "params/STeMSPrefetcher.hh"
 
 namespace gem5
@@ -223,10 +222,6 @@ STeMS::reconstructSequence(
 
     // Now query the PST with the PC of each RMOB entry
     idx = 0;
-<<<<<<< HEAD
-    bool is_secure = false;
-=======
->>>>>>> ee9814499d (base, mem-cache: Rewrite TaggedEntry code)
     for (auto it = rmob_it; it != rmob.end() && (idx < reconstructionEntries);
         it++) {
         auto pst_entry = patternSequenceTable.findEntry(
