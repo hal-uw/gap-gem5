@@ -225,12 +225,14 @@ HBMCtrl::recvTimingReq(PacketPtr pkt)
     // What type of media does this packet access?
     bool is_pc0;
 
-    // TODO: make the interleaving bit across pseudo channels a parameter
-    if (bits(pkt->getAddr(), 6) == 0) {
-        is_pc0 = true;
-    } else {
-        is_pc0 = false;
-    }
+    // TODO: Determine if this method of determining the appropriate
+    // interface is too slow to put here
+    is_pc0 = pc0Int->getAddrRange().contains(pkt->getAddr());
+
+    //panic_if((!is_pc0 && !pc1Int->getAddrRange().contains(pkt->getAddr())),
+    //            "Controller doesn't have access to packet's address");
+
+
 
     // Find out how many memory packets a pkt translates to
     // If the burst size is equal or larger than the pkt size, then a pkt

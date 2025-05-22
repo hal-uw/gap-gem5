@@ -165,27 +165,62 @@ def setup_memory_controllers(system, ruby, dir_cntrls, options):
             crossbars.append(crossbar)
             dir_cntrl.memory_out_port = crossbar.cpu_side_ports
 
+        mem_type = ObjectList.mem_list.get(options.mem_type)
+        useHBMController = (
+            issubclass(mem_type, DRAMInterface) and options.se_hbm
+        )
+
         dir_ranges = []
         for r in system.mem_ranges:
-            mem_type = ObjectList.mem_list.get(options.mem_type)
-            dram_intf = MemConfig.create_mem_intf(
-                mem_type,
-                r,
-                index,
-                int(math.log(options.num_dirs, 2)),
-                intlv_size,
-                options.xor_low_bit,
-            )
-            if issubclass(mem_type, DRAMInterface):
-                mem_ctrl = m5.objects.MemCtrl(dram=dram_intf)
+            if not useHBMController:
+                dram_intf = MemConfig.create_mem_intf(
+                    mem_type,
+                    r,
+                    index,
+                    int(math.log(options.num_dirs, 2)),
+                    intlv_size,
+                    options.xor_low_bit,
+                )
+
+                if issubclass(mem_type, DRAMInterface):
+                    mem_ctrl = m5.objects.MemCtrl(dram=dram_intf)
+                else:
+                    mem_ctrl = dram_intf
+
+                if options.access_backing_store:
+                    dram_intf.kvm_map = False
+
+                mem_ctrls.append(mem_ctrl)
+                dir_ranges.append(dram_intf.range)
+
             else:
-                mem_ctrl = dram_intf
+                print("Using HBM ctrl")
+                dram_intf_1 = MemConfig.create_mem_intf(
+                    mem_type,
+                    r,
+                    (2 * index),
+                    int(math.log(options.num_dirs, 2)) + 1,
+                    intlv_size,
+                    options.xor_low_bit,
+                )
+                dram_intf_2 = MemConfig.create_mem_intf(
+                    mem_type,
+                    r,
+                    (2 * index) + 1,
+                    int(math.log(options.num_dirs, 2)) + 1,
+                    intlv_size,
+                    options.xor_low_bit,
+                )
 
-            if options.access_backing_store:
-                dram_intf.kvm_map = False
-
-            mem_ctrls.append(mem_ctrl)
-            dir_ranges.append(dram_intf.range)
+                mem_ctrl = m5.objects.HBMCtrl(
+                    dram=dram_intf_1, dram_2=dram_intf_2
+                )
+                if options.access_backing_store:
+                    dram_intf_1.kvm_map = False
+                    dram_intf_2.kvm_map = False
+                mem_ctrls.append(mem_ctrl)
+                dir_ranges.append(dram_intf_1.range)
+                dir_ranges.append(dram_intf_2.range)
 
             if crossbar != None:
                 mem_ctrl.port = crossbar.mem_side_ports
