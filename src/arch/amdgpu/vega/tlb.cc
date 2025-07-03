@@ -363,10 +363,8 @@ GpuTLB::issueTLBLookup(PacketPtr pkt)
             // Set if this is a system request
             pkt->req->setSystemReq(entry->pte.s);
 
-            Addr alignedPaddr = pageAlign(entry->paddr);
             sender_state->tlbEntry =
-                new VegaTlbEntry(1 /* VMID */, virt_page_addr, alignedPaddr,
-                            entry->logBytes, entry->pte);
+                new VegaTlbEntry(*entry);
         }
 
         if (update_stats) {
@@ -852,7 +850,7 @@ GpuTLB::CpuSidePort::recvFunctional(PacketPtr pkt)
                 DPRINTF(GPUTLB, "Mapping %#x to %#x\n", vaddr, paddr);
 
                 sender_state->tlbEntry =
-                    new VegaTlbEntry(1 /* VMID */, virt_page_addr,
+                    new VegaTlbEntry(1 /* VMID */, vaddr & (~mask(logBytes)),
                                  alignedPaddr, logBytes, pte);
             } else {
                 // If this was a prefetch, then do the normal thing if it
@@ -863,7 +861,8 @@ GpuTLB::CpuSidePort::recvFunctional(PacketPtr pkt)
                     DPRINTF(GPUTLB, "Mapping %#x to %#x\n", vaddr, paddr);
 
                     sender_state->tlbEntry =
-                        new VegaTlbEntry(1 /* VMID */, virt_page_addr,
+                        new VegaTlbEntry(1 /* VMID */,
+                                     vaddr & (~mask(logBytes)),
                                      alignedPaddr, logBytes, pte);
                 } else {
                     DPRINTF(GPUPrefetch, "Prefetch failed %#x\n", vaddr);
@@ -883,9 +882,7 @@ GpuTLB::CpuSidePort::recvFunctional(PacketPtr pkt)
                     entry->vaddr);
         }
 
-        sender_state->tlbEntry = new VegaTlbEntry(1 /* VMID */, entry->vaddr,
-                                                 entry->paddr, entry->logBytes,
-                                                 entry->pte);
+        sender_state->tlbEntry = new VegaTlbEntry(*entry);
     }
 
     // This is the function that would populate pkt->req with the paddr of
