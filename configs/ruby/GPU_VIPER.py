@@ -674,6 +674,8 @@ def construct_gpudirs(options, system, ruby_system, network):
         mem_type = ObjectList.mem_list.get(options.dgpu_mem_type)
 
         if options.hbm_ctrl:
+            # If HBM controller is enabled,
+            # set up dram interfaces for two pseudo channels per HBMCtrl
             dram_intf = MemConfig.create_mem_intf(
                 mem_type,
                 gpu_mem_range,
