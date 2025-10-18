@@ -337,3 +337,11 @@ def addAmdGPUOptions(parser):
         default=41,
         help="Latency for memtimes in scalar memory pipeline.",
     )
+
+    parser.add_argument(
+        "--hbm-ctrl",
+        action="store_true",
+        default=False,
+        help="Use HBMCtrl",
+    )
+

@@ -201,6 +201,8 @@ def addNoISAOptions(parser):
     # Enable Ruby
     parser.add_argument("--ruby", action="store_true")
 
+    parser.add_argument("--se-hbm", action="store_true", help="Use HBMCtrl for SE mode")
+
     # Run duration options
     parser.add_argument(
         "-m",

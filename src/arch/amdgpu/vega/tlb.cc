@@ -99,8 +99,8 @@ GpuTLB::GpuTLB(const VegaGPUTLBParams &p)
     // assuming one walker per TLB, set our walker's TLB to this TLB.
     walker->setTLB(this);
 
-    // gpuDevice should be non-null in full system only and is set by GpuTLB
-    // params from the config file.
+    // gpuDevice should be non-null in full system only and is set
+    // by GPUTLB params from the config file.
     if (gpuDevice) {
         gpuDevice->getVM().registerTLB(this);
     }
@@ -264,7 +264,8 @@ GpuTLB::tlbLookup(const RequestPtr &req, bool update_stats)
     }
     Addr vaddr = req->getVaddr();
     Addr alignedVaddr = pageAlign(vaddr);
-    DPRINTF(GPUTLB, "TLB Lookup for vaddr %#x.\n", vaddr);
+    int set = (vaddr >> VegaISA::PageShift) & setMask; // added this
+    DPRINTF(GPUTLB, "TLB Lookup for vaddr %#x in set %d.\n", vaddr, set); // added set
 
     //update LRU stack on a hit
     VegaTlbEntry *entry = lookup(alignedVaddr, true);
@@ -345,8 +346,8 @@ GpuTLB::issueTLBLookup(PacketPtr pkt)
 
     // Access the TLB and figure out if it's a hit or a miss.
     auto entry = tlbLookup(tmp_req, update_stats);
+
     if (entry || pkt->req->hasNoAddr()) {
-        // Put the entry in SenderState
         lookup_outcome = TLB_HIT;
         if (pkt->req->hasNoAddr()) {
             sender_state->tlbEntry =
@@ -355,6 +356,7 @@ GpuTLB::issueTLBLookup(PacketPtr pkt)
             // host memory for a memtime request
             pkt->req->setSystemReq(false);
         } else {
+            // Put the entry in SenderState
             VegaTlbEntry *entry = lookup(virt_page_addr, false);
             assert(entry);
 
@@ -364,7 +366,7 @@ GpuTLB::issueTLBLookup(PacketPtr pkt)
             Addr alignedPaddr = pageAlign(entry->paddr);
             sender_state->tlbEntry =
                 new VegaTlbEntry(1 /* VMID */, virt_page_addr, alignedPaddr,
-                                 entry->logBytes, entry->pte);
+                            entry->logBytes, entry->pte);
         }
 
         if (update_stats) {
@@ -480,12 +482,15 @@ GpuTLB::handleTranslationReturn(Addr virt_page_addr,
     }
 
     if (tlb_outcome == TLB_HIT) {
-        DPRINTF(GPUTLB, "Translation Done - TLB Hit for addr %#x\n",
-            vaddr);
         local_entry = safe_cast<VegaTlbEntry *>(sender_state->tlbEntry);
+        int set = (local_entry->vaddr >> VegaISA::PageShift) & setMask;
+        DPRINTF(GPUTLB, "Translation Done - TLB Hit for addr %#x\n in set %d",
+        vaddr, set);
     } else {
-        DPRINTF(GPUTLB, "Translation Done - TLB Miss for addr %#x\n",
-                vaddr);
+        new_entry = safe_cast<VegaTlbEntry *>(sender_state->tlbEntry);
+        int set = (new_entry->vaddr >> VegaISA::PageShift) & setMask;
+        DPRINTF(GPUTLB, "Translation Done - TLB Miss for addr %#x\n in set %d",
+                vaddr, set);
 
         /**
          * We are returning either from a page walk or from a hit at a
