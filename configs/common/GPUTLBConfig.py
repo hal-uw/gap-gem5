@@ -166,7 +166,7 @@ def config_tlb_hierarchy(
     L2 = [{"name": "l2", "width": 1, "TLBarray": [], "CoalescerArray": []}]
     L3 = [{"name": "l3", "width": 1, "TLBarray": [], "CoalescerArray": []}]
 
-    TLB_hierarchy = [L1, L2, L3]
+    TLB_hierarchy = [L1, L2]
 
     # -------------------------------------------------------------------------
     # Create the hiearchy
@@ -293,18 +293,18 @@ def config_tlb_hierarchy(
             l2_coalescer_index += 1
 
     # L2 <-> L3
-    system.l2_tlb[0].mem_side_ports[0] = system.l3_coalescer[0].cpu_side_ports[
-        0
-    ]
+    #system.l2_tlb[0].mem_side_ports[0] = system.l3_coalescer[0].cpu_side_ports[
+    #    0
+    #]
 
     # L3 TLB Vega page table walker to memory for full system only
-    if full_system:
-        for TLB_type in L3:
-            name = TLB_type["name"]
-            for index in range(TLB_type["width"]):
-                exec(
-                    "system._dma_ports.append(system.%s_tlb[%d].walker)"
-                    % (name, index)
-                )
+    #if full_system:
+    #    for TLB_type in L3:
+    #        name = TLB_type["name"]
+    #        for index in range(TLB_type["width"]):
+    #            exec(
+    #                "system._dma_ports.append(system.%s_tlb[%d].walker)"
+    #                % (name, index)
+    #            )
 
     return system

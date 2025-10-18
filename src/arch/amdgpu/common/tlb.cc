@@ -100,7 +100,7 @@ namespace X86ISA
          * different sets etc)
          */
         setMask = numSets - 1;
-
+	printf("Size: %d, Assoc: %d, setMask: %lu, numSets: %d\n",size, assoc, setMask, numSets);
         maxCoalescedReqs = p.maxOutstandingReqs;
 
         // Do not allow maxCoalescedReqs to be more than the TLB associativity
@@ -178,6 +178,9 @@ namespace X86ISA
         *newEntry = entry;
         newEntry->vaddr = vpn;
         entryList[set].push_front(newEntry);
+
+        DPRINTF(GPUTLB, "Inserted %#lx -> %#lx of size %#lx into set %d\n",
+            newEntry->vaddr, newEntry->paddr, entry.size(), set);
 
         return newEntry;
     }
@@ -379,10 +382,13 @@ namespace X86ISA
 
         assert(seg != segment_idx::Ms);
         Addr vaddr = req->getVaddr();
+	int set = (vaddr >> X86ISA::PageShift) & setMask; // added this
         if (req->hasNoAddr()) {
             return true;
         } else {
-            DPRINTF(GPUTLB, "TLB Lookup for vaddr %#x.\n", vaddr);
+		DPRINTF(GPUTLB, "TLB Lookup: vaddr=%#x, set calculation: (%#x >> %d) & %#x = %d\n",
+        vaddr, PageShift, setMask, set);
+            //DPRINTF(GPUTLB, "TLB Lookup for vaddr %#x in set %d.\n", vaddr, set);
         }
         HandyM5Reg m5Reg = tc->readMiscRegNoEffect(misc_reg::M5Reg);
 
@@ -809,13 +815,20 @@ namespace X86ISA
         TlbEntry *local_entry, *new_entry;
 
         if (tlb_outcome == TLB_HIT) {
-            DPRINTF(GPUTLB, "Translation Done - TLB Hit for addr %#x\n",
-                vaddr);
+	    local_entry = safe_cast<TlbEntry *>(sender_state->tlbEntry);
+	    int set = (local_entry->vaddr >> X86ISA::PageShift) & setMask; // added this also
+             DPRINTF(GPUTLB, "Translation Hit: vaddr=%#x, set calculation: (%#x >> %d) & %#x = %d\n",
+            local_entry->vaddr, local_entry->vaddr, X86ISA::PageShift, setMask, set);
+	    //DPRINTF(GPUTLB, "Translation Done (Common) - TLB Hit for addr %#x in set %d\n",
+            //vaddr, set);
             local_entry = safe_cast<TlbEntry *>(sender_state->tlbEntry);
         } else {
-            DPRINTF(GPUTLB, "Translation Done - TLB Miss for addr %#x\n",
-                    vaddr);
-
+	    new_entry = safe_cast<TlbEntry *>(sender_state->tlbEntry);
+	    int set = (new_entry->vaddr >> X86ISA::PageShift) & setMask;
+            //DPRINTF(GPUTLB, "Translation Done (Common) - TLB Miss for addr %#x in set %d\n",
+            //        vaddr, set);
+	    DPRINTF(GPUTLB, "Translation Miss: vaddr=%#x, set calculation: (%#x >> %d) & %#x = %d\n",
+            new_entry->vaddr, new_entry->vaddr, X86ISA::PageShift, setMask, set);
             /**
              * We are returning either from a page walk or from a hit at a
              * lower TLB level. The senderState should be "carrying" a pointer

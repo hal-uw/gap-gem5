@@ -201,6 +201,8 @@ def addNoISAOptions(parser):
     # Enable Ruby
     parser.add_argument("--ruby", action="store_true")
 
+    parser.add_argument("--se-hbm", action="store_true", help="Use HBMCtrl for SE mode")
+
     # Run duration options
     parser.add_argument(
         "-m",
@@ -808,11 +810,6 @@ def addFSOptions(parser):
             help="Specifies device tree blob file to use with device-tree-"
             "enabled kernels",
         )
-        parser.add_argument(
-            "--bootloader",
-            action="append",
-            help="executable file that runs before the --kernel",
-        )
     if buildEnv["USE_ARM_ISA"]:
         parser.add_argument(
             "--list-machine-types",
@@ -833,6 +830,11 @@ def addFSOptions(parser):
             "switches and dump tasks file (required for Streamline)",
         )
         parser.add_argument("--vio-9p", action="store_true", help=vio_9p_help)
+        parser.add_argument(
+            "--bootloader",
+            action="append",
+            help="executable file that runs before the --kernel",
+        )
 
     # Benchmark options
     parser.add_argument(
