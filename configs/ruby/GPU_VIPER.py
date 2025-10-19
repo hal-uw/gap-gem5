@@ -440,7 +440,7 @@ def define_options(parser):
     parser.add_argument(
         "--num-tccs",
         type=int,
-        default=1,
+        default=32,
         help="number of TCC banks in the GPU",
     )
     parser.add_argument(
@@ -510,7 +510,7 @@ def define_options(parser):
     parser.add_argument(
         "--tcc-num-atomic-alus",
         type=int,
-        default=64,
+        default=512,
         help="Number of atomic ALUs in the TCC",
     )
     parser.add_argument(
@@ -528,7 +528,7 @@ def define_options(parser):
     parser.add_argument(
         "--tcc-tag-access-latency",
         type=int,
-        default="2",
+        default="8",
         help="Tag access latency in L2 cache",
     )
     parser.add_argument(
