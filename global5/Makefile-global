@@ -1,0 +1,15 @@
+HIPOPTS = -save-temps --amdgpu-target=gfx906,gfx900
+
+HIP_PATH ?= /opt/rocm/hip
+
+CC := $(HIP_PATH)/bin/hipcc
+
+SRC = global.cpp
+
+EXE = global
+
+release:
+	$(CC) $(HIPOPTS) $(SRC) -o $(EXE) 
+
+clean:
+	rm -f global
