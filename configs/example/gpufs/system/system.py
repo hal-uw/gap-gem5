@@ -115,7 +115,7 @@ def makeGpuFSSystem(args):
         numHWQueues=args.num_hw_queues,
         walker=hsapp_pt_walker,
     )
-    dispatcher_exit_events = False
+    dispatcher_exit_events = True
     if args.exit_at_gpu_task > -1:
         dispatcher_exit_events = True
     if args.exit_after_gpu_kernel > -1:
@@ -309,6 +309,7 @@ def makeGpuFSSystem(args):
 
     # Create Ruby system using disjoint VIPER topology
     system.ruby = Disjoint_VIPER()
+    system.ruby.shader_pointer = shader
     system.ruby.create(args, system, system.iobus, system._dma_ports)
 
     # Create a seperate clock domain for Ruby
