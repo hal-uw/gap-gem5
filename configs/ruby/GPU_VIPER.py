@@ -540,6 +540,7 @@ def define_options(parser):
         default="8",
         help="Data access latency in L2 cache",
     )
+    parser.add_argument("--simplemem-bw", type=str, default="32GiB/s")
 
 
 def construct_dirs(options, system, ruby_system, network):
@@ -692,6 +693,11 @@ def construct_gpudirs(options, system, ruby_system, network):
                 options.cacheline_size,
                 xor_low_bit,
             )
+            dram_intf.read_buffer_size = options.hbm_buffer_size
+            dram_intf.write_buffer_size = options.hbm_buffer_size
+            dram_intf_2.read_buffer_size = options.hbm_buffer_size
+            dram_intf_2.write_buffer_size = options.hbm_buffer_size
+            # dram_intf.page_policy = dram_intf_2.page_policy = "open_adaptive"
         else:
             dram_intf = MemConfig.create_mem_intf(
                 mem_type,
@@ -701,6 +707,11 @@ def construct_gpudirs(options, system, ruby_system, network):
                 options.cacheline_size,
                 xor_low_bit,
             )
+            dram_intf = m5.objects.SimpleMemory(
+                range=dram_intf.range,
+                bandwidth=options.simplemem_bw,
+                latency="1ns",
+            )
 
         if issubclass(mem_type, DRAMInterface):
             if options.hbm_ctrl:
@@ -708,12 +719,23 @@ def construct_gpudirs(options, system, ruby_system, network):
                     dram=dram_intf, dram_2=dram_intf_2
                 )
             else:
-                mem_ctrl = m5.objects.MemCtrl(dram=dram_intf)
+                # mem_ctrl = m5.objects.MemCtrl(dram=dram_intf)
+                # simple mem
+                mem_ctrl = dram_intf
+
         else:
             mem_ctrl = dram_intf
 
-        mem_ctrl.port = dir_cntrl.memory_out_port
-        mem_ctrl.dram.enable_dram_powerdown = False
+        # for generating trace
+        if i == 0:
+            system.monitor = CommMonitor()
+            system.monitor.trace = MemTraceProbe(trace_file="monitor.ptrc.gz")
+            system.monitor.cpu_side_port = dir_cntrl.memory_out_port
+            mem_ctrl.port = system.monitor.mem_side_port
+        else:
+            mem_ctrl.port = dir_cntrl.memory_out_port
+        if hasattr(mem_ctrl, "dram"):
+            mem_ctrl.dram.enable_dram_powerdown = False
 
         if options.hbm_ctrl:
             dir_cntrl.addr_ranges = [dram_intf.range, dram_intf_2.range]
