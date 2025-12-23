@@ -321,3 +321,10 @@ def addAmdGPUOptions(parser):
         default=False,
         help="Use HBMCtrl",
     )
+
+    parser.add_argument(
+        "--hbm-buffer-size",
+        type=int,
+        default=256,
+        help="Buffer size HBMCtrl",
+    )
