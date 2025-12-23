@@ -347,7 +347,7 @@ AMDGPUDevice::readFrame(PacketPtr pkt, Addr offset)
     cp->shader()->cuList[0]->memPort[0].sendFunctional(readPkt);
     if (readPkt->cmd == MemCmd::FunctionalReadError) {
         delete readPkt;
-        delete dataPtr;
+        delete[] dataPtr;
         RequestPtr req = std::make_shared<Request>(offset, pkt->getSize(), 0,
                                                vramRequestorId());
         PacketPtr readPkt = Packet::createRead(req);
