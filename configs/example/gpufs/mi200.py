@@ -145,7 +145,9 @@ def runMI200GPUFS(cpu_type):
 
     # Defaults for MI200
     args.ruby = True
-    args.cpu_type = "X86KvmCPU"
+
+    if args.cpu_type != "X86KvmCPU" and args.cpu_type != "AtomicSimpleCPU":
+        args.cpu_type = "X86KvmCPU"
     args.mem_size = "8GiB"  # CPU host memory
     args.dgpu = True
     args.dgpu_mem_size = "16GiB"  # GPU device memory
