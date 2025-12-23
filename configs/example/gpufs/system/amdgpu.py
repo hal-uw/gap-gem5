@@ -36,7 +36,9 @@ def createGPU(system, args):
         n_wf=args.wfs_per_simd,
         cu_per_sqc=args.cu_per_sqc,
         timing=True,
-        clk_domain=system.clk_domain,
+        clk_domain=SrcClockDomain(
+            clock=args.gpu_clock, voltage_domain=system.cpu_voltage_domain
+        ),
     )
 
     # VIPER GPU protocol implements release consistency at GPU side. So,
@@ -73,8 +75,6 @@ def createGPU(system, args):
                 num_shared_mem_pipes=args.shr_mem_pipes_per_cu,
                 n_wf=args.wfs_per_simd,
                 execPolicy=args.CUExecPolicy,
-                debugSegFault=args.SegFaultDebug,
-                functionalTLB=args.FunctionalTLB,
                 localMemBarrier=args.LocalMemBarrier,
                 countPages=args.countPages,
                 max_cu_tokens=args.max_cu_tokens,

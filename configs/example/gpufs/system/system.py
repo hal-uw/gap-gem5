@@ -115,7 +115,7 @@ def makeGpuFSSystem(args):
         numHWQueues=args.num_hw_queues,
         walker=hsapp_pt_walker,
     )
-    dispatcher_exit_events = False
+    dispatcher_exit_events = True
     if args.exit_at_gpu_task > -1:
         dispatcher_exit_events = True
     if args.exit_after_gpu_kernel > -1:

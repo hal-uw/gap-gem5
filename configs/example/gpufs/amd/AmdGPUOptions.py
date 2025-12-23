@@ -249,18 +249,6 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
-        "--SegFaultDebug",
-        action="store_true",
-        help="checks for GPU seg fault before TLB access",
-    )
-
-    parser.add_argument(
-        "--FunctionalTLB",
-        action="store_true",
-        help="Assumes TLB has no latency",
-    )
-
-    parser.add_argument(
         "--register-file-cache-size",
         type=int,
         default=0,
@@ -268,22 +256,11 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
-        "--dgpu",
-        action="store_true",
-        default=False,
-        help="Configure the system as a dGPU instead of an APU."
-        "The dGPU config has its own local memory pool and is not "
-        "coherent with the host through hardware.  Data is "
-        "transfered from host to device memory using runtime calls "
-        "that copy data over a PCIe-like IO bus.",
-    )
-
-    parser.add_argument(
-        "--gfx-version",
-        type=str,
-        default="gfx902",
-        choices=["gfx900", "gfx902", "gfx908", "gfx90a"],
-        help="Gfx version for gpuNote: gfx902 is not fully supported by ROCm",
+        "--memtime-latency",
+        type=int,
+        # Set to a default of 41 from micro-benchmarks
+        default=41,
+        help="Latency for memtimes in scalar memory pipeline.",
     )
 
     parser.add_argument(
@@ -331,9 +308,23 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
-        "--memtime-latency",
+        "--mfma-scale",
+        type=float,
+        # Set to a default of 1 to not scale MFMA cycles
+        default=1,
+        help="Scale how long an mfma consumes the matrix core unit",
+    )
+
+    parser.add_argument(
+        "--hbm-ctrl",
+        action="store_true",
+        default=False,
+        help="Use HBMCtrl",
+    )
+
+    parser.add_argument(
+        "--hbm-buffer-size",
         type=int,
-        # Set to a default of 41 from micro-benchmarks
-        default=41,
-        help="Latency for memtimes in scalar memory pipeline.",
+        default=256,
+        help="Buffer size HBMCtrl",
     )
