@@ -257,7 +257,7 @@ def runGpuFSSystem(args):
 
     # Keep executing while there is something to do
     while True:
-        print("============", exit_event.getCause())
+        # print("============", exit_event.getCause())
         if (
             exit_event.getCause() == "m5_exit instruction encountered"
             or exit_event.getCause() == "user interrupt received"
@@ -276,8 +276,8 @@ def runGpuFSSystem(args):
                 break
             kernels_completed += 1
             tasks_completed += 1
-            m5.stats.dump()
-            m5.stats.reset()
+            # m5.stats.dump()
+            # m5.stats.reset()
         elif "GPU Blit Kernel Completed" in exit_event.getCause():
             tasks_completed += 1
             m5.stats.reset()

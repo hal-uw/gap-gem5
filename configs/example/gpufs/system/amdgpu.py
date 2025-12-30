@@ -40,7 +40,7 @@ def createGPU(system, args):
             clock=args.gpu_clock,
             voltage_domain=VoltageDomain(voltage=args.gpu_voltage),
         ),
-        progress_interval=args.gpu_progress_interval,
+        # progress_interval=args.gpu_progress_interval,
     )
 
     # VIPER GPU protocol implements release consistency at GPU side. So,
