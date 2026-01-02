@@ -30,9 +30,7 @@
 from m5.defines import buildEnv
 from m5.objects.AMDGPU import AMDGPUDevice
 from m5.objects.ClockedObject import ClockedObject
-from m5.objects.IndexingPolicies import (
-    BaseIndexingPolicy,
-)
+from m5.objects.IndexingPolicies import BaseIndexingPolicy
 from m5.objects.ReplacementPolicies import LRURP
 from m5.params import *
 from m5.proxy import *
@@ -100,7 +98,7 @@ class VegaTLBCoalescer(ClockedObject):
     cxx_header = "arch/amdgpu/vega/tlb_coalescer.hh"
     tlb_level = Param.Int(64, "tlb level")
     default_pgSize = Param.MemorySize("2MiB", "Default page size to coalesce")
-    maxDownstream = Param.Int(64, "max downstream @ this level")
+    maxDownstream = Param.Int(256, "max downstream @ this level")
     probesPerCycle = Param.Int(2, "Number of TLB probes per cycle")
     coalescingWindow = Param.Int(1, "Permit coalescing across that many ticks")
     cpu_side_ports = VectorResponsePort("Port on side closer to CPU/CU")
