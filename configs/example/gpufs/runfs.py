@@ -276,8 +276,8 @@ def runGpuFSSystem(args):
                 break
             kernels_completed += 1
             tasks_completed += 1
-            m5.stats.dump()
-            m5.stats.reset()
+            # m5.stats.dump()
+            # m5.stats.reset()
         elif "GPU Blit Kernel Completed" in exit_event.getCause():
             tasks_completed += 1
             m5.stats.reset()
