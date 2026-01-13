@@ -67,7 +67,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -321,7 +321,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -428,7 +428,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -492,7 +492,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
         ConstVecOperandU32 data1(gpuDynInst, extData.DATA1);
@@ -559,7 +559,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
         ConstVecOperandU32 data1(gpuDynInst, extData.DATA1);
@@ -752,7 +752,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandF32 data(gpuDynInst, extData.DATA0);
 
@@ -814,7 +814,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU8 data(gpuDynInst, extData.DATA0);
 
@@ -876,7 +876,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU8 data(gpuDynInst, extData.DATA0);
 
@@ -938,7 +938,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU16 data(gpuDynInst, extData.DATA0);
 
@@ -1481,7 +1481,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -1545,7 +1545,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -1612,7 +1612,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -1678,7 +1678,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -1741,7 +1741,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -1825,7 +1825,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -1892,7 +1892,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(gpuDynInst->computeUnit()
-                                ->cyclesToTicks(Cycles(24)));
+                                ->cyclesToTicks(Cycles(60)));
 
         ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
         VecOperandU32 vdst(gpuDynInst, extData.VDST);
@@ -2028,7 +2028,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(gpuDynInst->computeUnit()
-                                ->cyclesToTicks(Cycles(24)));
+                                ->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
         VecOperandU32 vdst(gpuDynInst, extData.VDST);
@@ -2116,7 +2116,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(gpuDynInst->computeUnit()
-                                ->cyclesToTicks(Cycles(24)));
+                                ->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
         VecOperandU32 vdst(gpuDynInst, extData.VDST);
@@ -2203,7 +2203,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU64 data(gpuDynInst, extData.DATA0);
 
@@ -2521,7 +2521,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU64 data(gpuDynInst, extData.DATA0);
 
@@ -2585,7 +2585,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU64 data0(gpuDynInst, extData.DATA0);
         ConstVecOperandU64 data1(gpuDynInst, extData.DATA1);
@@ -2652,7 +2652,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU64 data0(gpuDynInst, extData.DATA0);
         ConstVecOperandU64 data1(gpuDynInst, extData.DATA1);
@@ -3261,7 +3261,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -3325,7 +3325,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -3392,7 +3392,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -4412,7 +4412,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
         ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + 1);
@@ -4476,7 +4476,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
         ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
         ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + 1);
@@ -4543,7 +4543,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
@@ -4607,7 +4607,7 @@ namespace VegaISA
         gpuDynInst->execUnitId = wf->execUnitId;
         gpuDynInst->latency.init(gpuDynInst->computeUnit());
         gpuDynInst->latency.set(
-                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
         ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
         addr.read();
