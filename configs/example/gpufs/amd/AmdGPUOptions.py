@@ -104,6 +104,13 @@ def addAmdGPUOptions(parser):
         default=4,
         help="Number of cycles per vector instruction issue period",
     )
+    # issue period per scalar instruction: number of cycles before issuing another inst
+    parser.add_argument(
+        "--scalar-issue-period",
+        type=int,
+        default=1,
+        help="Number of cycles per scalar instruction issue period",
+    )
     parser.add_argument(
         "--glbmem-wr-bus-width",
         type=int,
