@@ -1110,7 +1110,7 @@ Wavefront::exec()
                 cyclesToTicks(computeUnit->issuePeriod));
         } else {
             computeUnit->scalarALUs[scalarAlu].set(computeUnit->
-                cyclesToTicks(computeUnit->issuePeriod));
+                cyclesToTicks(computeUnit->scalarIssuePeriod));
         }
     // Barrier on Scalar ALU
     } else if (ii->isBarrier()) {
