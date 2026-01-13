@@ -145,7 +145,10 @@ LdsState::countBankConflicts(GPUDynInstPtr gpuDynInst,
         // calculate bank conflicts
         for (int j = 0; j < numBanks; ++j) {
             if (addr_array[j] != std::numeric_limits<Addr>::max()) {
-                int bankId = addr_array[j] % banks;
+                // Determine the bank ID for this address
+                // Each bank is 4 bytes wide, so divide address by 4
+                // to get the "bank address"
+                int bankId = (addr_array[j]/4) % banks;
                 bank[bankId]++;
                 max_bank = std::max(max_bank, bank[bankId]);
                 // Count the number of LDS banks accessed.
