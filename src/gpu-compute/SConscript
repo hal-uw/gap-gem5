@@ -42,6 +42,7 @@ SimObject('GPU.py', sim_objects=[
     enums=['PrefetchType', 'GfxVersion', 'StorageClassType'])
 SimObject('GPUStaticInstFlags.py', enums=['GPUStaticInstFlags'])
 SimObject('LdsState.py', sim_objects=['LdsState'])
+SimObject('GPUDVFSController.py', sim_objects=['GPUDVFSController'])
 
 Source('comm.cc')
 Source('compute_unit.cc')
@@ -73,6 +74,7 @@ Source('static_register_manager_policy.cc')
 Source('vector_register_file.cc')
 Source('register_file_cache.cc')
 Source('wavefront.cc')
+Source('gpu_dvfs_controller.cc')
 
 DebugFlag('GPUAgentDisp')
 DebugFlag('GPUCoalescer')
