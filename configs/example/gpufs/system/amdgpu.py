@@ -30,16 +30,52 @@
 import m5
 from m5.objects import *
 
+def createClockVoltageDomains(args):
+    gpu_freqs = ['1630MHz', '1536MHz', '1401MHz', 
+                 '1200MHz', '1138MHz', '1084MHz', 
+                 '991MHz','700MHz']
+    gpu_voltages = ['1.2V', '1.15V', '1.1V', 
+                    '1.05V', '1.0V', '0.95V', 
+                    '0.9V', '0.8V']
+    
+    #Create per-CU voltage and clock domains
+    cu_voltage_domains = []
+    cu_clk_domains = []
+
+    for i in range(args.num_compute_units):
+        cu_voltage_domains.append(
+            #TODO: Map the args.gpu_voltage to it
+            VoltageDomain(voltage=gpu_voltages)
+        )
+
+        cu_clk_domains.append(
+            SrcClockDomain(
+                #TODO: Map args.gpu_clk to it
+                clock=gpu_freqs , 
+                voltage_domain=cu_voltage_domains[i],
+                domain_id=i, #CUs get id=0,1,2,..n-1
+                init_perf_level=args.gpu_init_perf_level
+            )
+        )
+
+    #Create separate Shader voltage and clock domain
+    shader_voltage_domain = VoltageDomain(voltage=gpu_voltages)
+    shader_clk_domain = SrcClockDomain(
+        clock=gpu_freqs,
+        voltage_domain=shader_voltage_domain,
+        domain_id=args.num_compute_units, #shader gets id=n
+        init_perf_level=args.gpu_init_perf_level
+    )
+
+    return shader_clk_domain, cu_clk_domains
 
 def createGPU(system, args):
+    shader_clk_domain, cu_clk_domains = createClockVoltageDomains(args)
     shader = Shader(
         n_wf=args.wfs_per_simd,
         cu_per_sqc=args.cu_per_sqc,
         timing=True,
-        clk_domain=SrcClockDomain(
-            clock=args.gpu_clock,
-            voltage_domain=VoltageDomain(voltage=args.gpu_voltage),
-        ),
+        clk_domain=shader_clk_domain
     )
 
     # VIPER GPU protocol implements release consistency at GPU side. So,
@@ -64,6 +100,7 @@ def createGPU(system, args):
         compute_units.append(
             ComputeUnit(
                 cu_id=i,
+                clk_domain=cu_clk_domains[i],
                 perLaneTLB=per_lane,
                 num_SIMDs=args.simds_per_cu,
                 wf_size=args.wf_size,

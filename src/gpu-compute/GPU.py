@@ -282,6 +282,13 @@ class ComputeUnit(ClockedObject):
 
     register_file_cache = VectorParam.RegisterFileCache("Register file cache")
 
+    # L1 cache references for DVFS bank conflict tracking
+    tcp_cache = Param.RubyCache(NULL, "TCP (vector L1) cache for this CU")
+    sqc_cache = Param.RubyCache(NULL, "SQC (scalar L1) cache for this CU")
+
+    # GPU coalescer reference for DVFS MSHR stall tracking
+    gpu_coalescer = Param.RubyPort(NULL, "GPU coalescer for this CU")
+
     out_of_order_data_delivery = Param.Bool(
         False, "enable OoO data delivery in the GM pipeline"
     )

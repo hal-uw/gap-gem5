@@ -36,7 +36,8 @@ from common.FSConfig import *
 from example.gpufs.Disjoint_VIPER import *
 from ruby import Ruby
 from system.amdgpu import *
-
+from system.GpuPowerModel import attach_cu_power
+from m5.objects import GPUDVFSController
 from m5.util import panic
 
 
@@ -103,9 +104,31 @@ def makeGpuFSSystem(args):
     shader = createGPU(system, args)
     connectGPU(system, args)
 
+    # Configure and Connect the DVFS handler 
+    if(args.enable_dvfs):
+        cu_clk_domains = [cu.clk_domain for cu in shader.CUs]
+        system.dvfs_handler.domains = cu_clk_domains
+        system.dvfs_handler.enable  = args.enable_dvfs
+        system.dvfs_handler.transition_latency = args.dvfs_transition_latency
+        system.dvfs_handler.sys_clk_domain = system.clk_domain
+
+        for i in range(args.num_compute_units):
+            controller = GPUDVFSController(
+                dvfs_handler=system.dvfs_handler,  # Use System's default handler
+                compute_unit=shader.CUs[i],     # Each monitors a different CU
+                evaluation_period=args.dvfs_eval_window,
+                enable_frequency_transitions=args.enable_dvfs,
+            )
+            # Assign with unique name so System can track it
+            setattr(system, f"cu_dvfs_controller_{i}", controller)
+
     # The shader core will be whatever is after the CPU cores are accounted for
     shader_idx = args.num_cpus
     system.cpu.append(shader)
+
+    #Attach each CU to power model
+    for cu in shader.CUs:
+        attach_cu_power(system, cu)
 
     # This arbitrary address is something in the X86 I/O hole
     hsapp_gpu_map_paddr = 0xE00000000
@@ -239,6 +262,18 @@ def makeGpuFSSystem(args):
     system.ruby.clk_domain = SrcClockDomain(
         clock=args.ruby_clock, voltage_domain=system.voltage_domain
     )
+
+    # Connect cache pointers for bank conflict tracking (after system.ruby.create)
+    for i in range(args.num_compute_units):
+        cu = shader.CUs[i]
+
+        tcp_cntrl = getattr(system.ruby, f"tcp_cntrl{i}")
+        cu.tcp_cache = tcp_cntrl.L1cache
+        cu.gpu_coalescer = tcp_cntrl.coalescer
+
+        sqc_id = i // args.cu_per_sqc
+        sqc_cntrl = getattr(system.ruby, f"sqc_cntrl{sqc_id}")
+        cu.sqc_cache = sqc_cntrl.L1cache
 
     # If we are using KVM cpu, enable AVX. AVX is used in some ROCm libraries
     # such as rocBLAS which is used in higher level libraries like PyTorch.

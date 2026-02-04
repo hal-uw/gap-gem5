@@ -358,3 +358,37 @@ def addAmdGPUOptions(parser):
         default=256,
         help="Buffer size HBMCtrl",
     )
+
+    parser.add_argument(
+        "--gpu-init-perf-level",
+        type=int,
+        default=3,
+        choices=[0,1,2,3,4,5,6,7],
+        help='''Initial GPU performance level
+                (0=1630MHz, 1=1536MHz, 2=1401MHz,
+                 3=1200MHz, 4=1138MHz, 5=1084MHz, 
+                 6=991MHz, 7=700MHz)''',
+    )
+
+    parser.add_argument(
+        "--dvfs-transition-latency",
+        type=str,
+        default="1us",
+        help="Latency for DVFS transitions",
+    )
+
+    parser.add_argument(
+        "--dvfs-eval-window",
+        type=str, 
+        default='100ms',
+        choices=['100ms', '1ms', '100us', '10us'],
+        help='''CRISP DVFS Eval window size
+                (100ms, 1ms, 100us, 10us)''',
+    )
+
+    parser.add_argument(
+        "--enable-dvfs",
+        action="store_true",
+        default=False,
+        help="Enable/Disable GPU DVFS",
+    )
