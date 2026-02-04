@@ -35,7 +35,7 @@
 
 from m5.params import *
 from m5.proxy import *
-from m5.SimObject import SimObject
+from m5.SimObject import SimObject, cxxMethod
 
 
 # The handler in its current form is design to be centeralized, one per system
@@ -67,3 +67,26 @@ class DVFSHandler(SimObject):
     transition_latency = Param.Latency(
         "100us", "fixed latency for perf level migration"
     )
+
+    # Expose C++ wrapper methods to Python for runtime DVFS control
+    # These wrappers avoid the overloading issue with perfLevel()
+    @cxxMethod
+    def setPerfLevel(self, domain_id, perf_level):
+        #Sets the performance level to a specific clock domain.
+
+        #Args:
+        #    domain_id: The domain ID (the CU id / Shader ID)
+        #    perf_level: Performance level to set
+
+        #Returns True if success
+        pass
+
+    @cxxMethod
+    def getPerfLevel(self, domain_id):
+        #Get the current performance level for a specific CU
+
+        #Args:
+        #    domain_id: The domain ID (the CU id / Shader ID)
+
+        #Returns Current performance level of the CU/Shader
+        pass

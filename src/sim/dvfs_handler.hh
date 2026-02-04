@@ -128,6 +128,25 @@ class DVFSHandler : public SimObject
     }
 
     /**
+     * Set performance level for a domain.
+     * @param domain_id Software visible ID of the domain to be configured
+     * @param perf_level Requested performance level
+     * @return status whether the setting was successful
+     */
+    bool setPerfLevel(DomainID domain_id, PerfLevel perf_level) {
+        return perfLevel(domain_id, perf_level);
+    }
+
+    /**
+     * Get current performance level of a domain.
+     * @param domain_id Domain ID to query
+     * @return Current performance level of the specified domain
+     */
+    PerfLevel getPerfLevel(DomainID domain_id) const {
+        return perfLevel(domain_id);
+    }
+
+    /**
      * Read the clock period of the specified domain at the specified
      * performance level.
      * @param domain_id Domain ID to query

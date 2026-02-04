@@ -86,6 +86,12 @@ DVFSHandler::DVFSHandler(const Params &p)
         domainIDList.push_back(d->domainID());
     }
     UpdateEvent::dvfsHandler = this;
+
+    // Debug: Print what domains were registered
+    DPRINTF(DVFS, "DVFSHandler %s: Registered %d domains:\n", name(), domains.size());
+    for (const auto& pair : domains) {
+        DPRINTF(DVFS, "  Domain ID %d: %s\n", pair.first, pair.second->name());
+    }
 }
 
 DVFSHandler *DVFSHandler::UpdateEvent::dvfsHandler;
@@ -157,12 +163,19 @@ DVFSHandler::perfLevel(DomainID domain_id, PerfLevel perf_level)
 void
 DVFSHandler::UpdateEvent::updatePerfLevel()
 {
+    // Debug: Print what we're trying to do
+    DPRINTF(DVFS, "UpdateEvent: Updating domain %d to perf level %d\n",
+         domainIDToSet, perfLevelToSet);
+    DPRINTF(DVFS, "UpdateEvent: dvfsHandler = %p, handler name = %s\n",
+         dvfsHandler, dvfsHandler->name());
+    DPRINTF(DVFS, "UpdateEvent: Handler has %d domains\n", dvfsHandler->domains.size());
     // Perform explicit stats dump for power estimation before performance
     // level migration
     statistics::dump();
     statistics::reset();
 
     // Update the performance level in the clock domain
+    DPRINTF(DVFS, "UpdateEvent: About to find domain %d\n", domainIDToSet);
     auto d = dvfsHandler->findDomain(domainIDToSet);
     assert(d->perfLevel() != perfLevelToSet);
 
