@@ -1,5 +1,5 @@
 #include "gpu-compute/gpu_dvfs_controller.hh" 
-#include "debug/DVFS.hh" // DPRINTF
+#include "debug/GPU_DVFS.hh" // DPRINTF
 #include "gpu-compute/compute_unit.hh" // cu_id, CRISP counters
 #include "sim/dvfs_handler.hh" // Perf levels
 #include "sim/core.hh" // for sim_clock::Frequency
@@ -18,7 +18,7 @@ GPUDVFSController::GPUDVFSController(const Params &p)
       evaluateEvent([this]{ evaluateAndAdjust(); },
                     name() + ".evaluateEvent")
 {
-    DPRINTF(DVFS, "GPU DVFS Controller created for CU %d, "
+    DPRINTF(GPU_DVFS, "GPU DVFS Controller created for CU %d, "
             "eval period %lu ticks\n",
             computeUnit->cu_id, evaluationPeriod);
 }
@@ -27,7 +27,7 @@ void
 GPUDVFSController::startup()
 {
     // Debug: Print CU info
-    DPRINTF(DVFS, "GPU DVFS Controller: CU[%d] at %p, activeWaves=%d\n",
+    DPRINTF(GPU_DVFS, "GPU DVFS Controller: CU[%d] at %p, activeWaves=%d\n",
          computeUnit->cu_id, computeUnit, computeUnit->activeWaves);
 
     // Take cu_id as the domain id. 
@@ -35,7 +35,7 @@ GPUDVFSController::startup()
 
     // Get the number of VF levels
     DVFSHandler::PerfLevel numLevels = dvfsHandler->numPerfLevels(domain_id);
-    DPRINTF(DVFS, "GPU DVFS Controller: CU[%d] has %d performance levels:\n",
+    DPRINTF(GPU_DVFS, "GPU DVFS Controller: CU[%d] has %d performance levels:\n",
          computeUnit->cu_id, numLevels);
 
     // Print the VF levels available
@@ -43,12 +43,12 @@ GPUDVFSController::startup()
         Tick period = dvfsHandler->clkPeriodAtPerfLevel(domain_id, i);
         double freq = tickToFrequencyMHz(period);
         double voltage = dvfsHandler->voltageAtPerfLevel(domain_id, i);
-        DPRINTF(DVFS, "  Level %d: %.2f MHz, %.3f V\n", i, freq, voltage);
+        DPRINTF(GPU_DVFS, "  Level %d: %.2f MHz, %.3f V\n", i, freq, voltage);
     }
 
     // Schedule the first evaluation at current tick + Evaluation period. 
     schedule(&evaluateEvent, curTick() + evaluationPeriod);
-    DPRINTF(DVFS, "GPU DVFS Controller for CU %d started, first eval at tick %lu\n",
+    DPRINTF(GPU_DVFS, "GPU DVFS Controller for CU %d started, first eval at tick %lu\n",
             computeUnit->cu_id, curTick() + evaluationPeriod);
 }
 
@@ -56,7 +56,7 @@ double
 GPUDVFSController::tickToFrequencyMHz(Tick clkPeriod) const
 {
     if (clkPeriod == 0) {
-        DPRINTF(DVFS, "GPUDVFSController: Clock period is 0, returning 0 MHz\n");
+        DPRINTF(GPU_DVFS, "GPUDVFSController: Clock period is 0, returning 0 MHz\n");
         return 0.0;
     }
 
@@ -70,7 +70,7 @@ GPUDVFSController::tickToFrequencyMHz(Tick clkPeriod) const
 // to move them to a better named struct. 
 bool
 GPUDVFSController::extractAveragePower(
-    const ComputeUnit::CRISPCycleCounter &crispCounters,
+    const ComputeUnit::CRISPStatCount &crispCounters,
     double &staticPower, double &dynamicPower) const
 {
     // Minimum time threshold to avoid division by very small numbers
@@ -78,7 +78,7 @@ GPUDVFSController::extractAveragePower(
 
     // Check if we have valid time delta
     if (crispCounters.totalSimSecondsDelta < MIN_TIME_DELTA) {
-        DPRINTF(DVFS, "CU %d: Time delta too small (%.12f s), "
+        DPRINTF(GPU_DVFS, "CU %d: Time delta too small (%.12f s), "
                 "cannot extract power\n",
                 computeUnit->cu_id, crispCounters.totalSimSecondsDelta);
         return false;
@@ -87,7 +87,7 @@ GPUDVFSController::extractAveragePower(
     // Check if we have energy data (both zero means no power model)
     if (crispCounters.totalDynamicEnergy == 0.0 &&
         crispCounters.totalStaticEnergy == 0.0) {
-        DPRINTF(DVFS, "CU %d: No energy data available, "
+        DPRINTF(GPU_DVFS, "CU %d: No energy data available, "
                 "power model may not be attached\n",
                 computeUnit->cu_id);
         return false;
@@ -101,7 +101,7 @@ GPUDVFSController::extractAveragePower(
         crispCounters.totalDynamicEnergy / crispCounters.totalSimSecondsDelta
     );
 
-    DPRINTF(DVFS, "CU %d: Extracted power - Static: %.3f W, Dynamic: %.3f W "
+    DPRINTF(GPU_DVFS, "CU %d: Extracted power - Static: %.3f W, Dynamic: %.3f W "
             "(Energy: %.6f J / %.6f s, %.6f J / %.6f s)\n",
             computeUnit->cu_id, staticPower, dynamicPower,
             crispCounters.totalStaticEnergy, crispCounters.totalSimSecondsDelta,
@@ -111,12 +111,12 @@ GPUDVFSController::extractAveragePower(
 }
 
 uint64_t
-GPUDVFSController::calculateCRISPDelay(const ComputeUnit::CRISPCycleCounter &counters, double currentFreqMHz, double targetFreqMHz) const
+GPUDVFSController::calculateCRISPDelay(const ComputeUnit::CRISPStatCount &counters, double currentFreqMHz, double targetFreqMHz) const
 {
-    uint64_t Tcomp_LCP  = std::ceil((currentFreqMHz / targetFreqMHz) * counters.OverlappedCompute);
+    uint64_t Tcomp_LCP  = (uint64_t)std::ceil((currentFreqMHz / targetFreqMHz) * counters.OverlappedCompute);
     uint64_t TLCP       = (counters.TStall_LCP >= Tcomp_LCP) ? counters.TStall_LCP : Tcomp_LCP;
 
-    uint64_t Tcomp_CSP_scaled = std::ceil((currentFreqMHz / targetFreqMHz) * counters.PureCompute);
+    uint64_t Tcomp_CSP_scaled = (uint64_t)std::ceil((currentFreqMHz / targetFreqMHz) * counters.PureCompute);
     uint64_t TCSP             = (Tcomp_CSP_scaled >= (counters.PureCompute + counters.TStall_CSP)) ?
                                     Tcomp_CSP_scaled : (counters.PureCompute + counters.TStall_CSP);
 
@@ -126,14 +126,14 @@ GPUDVFSController::calculateCRISPDelay(const ComputeUnit::CRISPCycleCounter &cou
 }
 
 double
-GPUDVFSController::calculateCRISPEDP(const ComputeUnit::CRISPCycleCounter &counters,
+GPUDVFSController::calculateCRISPEDP(const ComputeUnit::CRISPStatCount &counters,
                                      double staticPower,    double dynamicPower,
                                      double currentFreqMHz, double targetFreqMHz,
                                      double voltageCurrent, double voltageTarget) const
 {
     // Guard against division by zero
     if (currentFreqMHz == 0.0 || targetFreqMHz == 0.0) {
-        DPRINTF(DVFS, "GPUDVFSController: Invalid frequency (current=%.2f, target=%.2f)\n",
+        DPRINTF(GPU_DVFS, "GPUDVFSController: Invalid frequency (current=%.2f, target=%.2f)\n",
              currentFreqMHz, targetFreqMHz);
         return std::numeric_limits<double>::max();
     }
@@ -157,7 +157,7 @@ GPUDVFSController::calculateCRISPEDP(const ComputeUnit::CRISPCycleCounter &count
 
 int
 GPUDVFSController::selectOptimalFrequencyEDP(
-    const ComputeUnit::CRISPCycleCounter &crispCounters) const
+    const ComputeUnit::CRISPStatCount &crispCounters) const
 {
     int domain_id = computeUnit->cu_id;
     DVFSHandler::PerfLevel currentLevel = dvfsHandler->perfLevel(domain_id);
@@ -171,7 +171,7 @@ GPUDVFSController::selectOptimalFrequencyEDP(
                     crispCounters.PureCompute > 0);
 
     if (!hasData) {
-        DPRINTF(DVFS, "CU %d: No CRISP data, staying at level %d\n",
+        DPRINTF(GPU_DVFS, "CU %d: No CRISP data, staying at level %d\n",
                 computeUnit->cu_id, currentLevel);
         return currentLevel;
     }
@@ -190,7 +190,7 @@ GPUDVFSController::selectOptimalFrequencyEDP(
     double staticPower, dynamicPower;
     if (!extractAveragePower(crispCounters, staticPower, dynamicPower)) {
         // No valid power data - stay at current level
-        DPRINTF(DVFS, "CU %d: No valid power data, staying at level %d\n",
+        DPRINTF(GPU_DVFS, "CU %d: No valid power data, staying at level %d\n",
                 computeUnit->cu_id, currentLevel);
         return currentLevel;
     }
@@ -210,7 +210,7 @@ GPUDVFSController::selectOptimalFrequencyEDP(
                                       currentFreqMHz, targetFreqMHz,
                                       currentVoltage, targetVoltage);
 
-        DPRINTF(DVFS, "  Level %d: freq=%.2f MHz, V=%.3f, EDP=%.6e\n",
+        DPRINTF(GPU_DVFS, "  Level %d: freq=%.2f MHz, V=%.3f, EDP=%.6e\n",
                 level, targetFreqMHz, targetVoltage, edp);
 
         if (edp < minEDP) {
@@ -219,7 +219,7 @@ GPUDVFSController::selectOptimalFrequencyEDP(
         }
     }
 
-    DPRINTF(DVFS, "CU %d: Optimal level=%d (minEDP=%.6e)\n",
+    DPRINTF(GPU_DVFS, "CU %d: Optimal level=%d (minEDP=%.6e)\n",
             computeUnit->cu_id, optimalLevel, minEDP);
 
     return optimalLevel;
@@ -237,7 +237,7 @@ GPUDVFSController::evaluateAndAdjust()
     int newLevel = selectOptimalFrequencyEDP(crispCounters);
 
     // Debug: Log CRISP counter summary
-    DPRINTF(DVFS, "CU %d CRISP: MemStall=%lu, LCP=%lu, CSP=%lu, "
+    DPRINTF(GPU_DVFS, "CU %d CRISP: MemStall=%lu, LCP=%lu, CSP=%lu, "
             "Overlap=%lu, Pure=%lu\n",
             computeUnit->cu_id,
             crispCounters.TMemoryStallCycles,
@@ -248,7 +248,7 @@ GPUDVFSController::evaluateAndAdjust()
 
     // Apply frequency change if needed
     if (newLevel != currentLevel && enableFrequencyTransitions) {
-        DPRINTF(DVFS, "CU %d: EDP transition %d -> %d\n",
+        DPRINTF(GPU_DVFS, "CU %d: EDP transition %d -> %d\n",
                 computeUnit->cu_id, currentLevel, newLevel);
         adjustFrequency(newLevel);
     }
@@ -266,7 +266,7 @@ double GPUDVFSController::computeIPC() {
 
   // Debug: Print raw stats periodically or when non-zero
   if (eval_count % 100 == 0 || currentInsts > 0) {
-    DPRINTF(DVFS, 
+    DPRINTF(GPU_DVFS, 
         "  [Eval %d] CU[%d]: activeWaves=%d, totalInsts=%lu, totalCycles=%lu\n",
         eval_count, computeUnit->cu_id, computeUnit->activeWaves, currentInsts,
         currentCycles);
@@ -284,7 +284,7 @@ double GPUDVFSController::computeIPC() {
   double ipc = 0.0;
   if (deltaCycles > 0) {
     ipc = static_cast<double>(deltaInsts) / deltaCycles;
-    DPRINTF(DVFS, "CU %d: deltaInsts=%lu, deltaCycles=%lu, IPC=%.3f\n",
+    DPRINTF(GPU_DVFS, "CU %d: deltaInsts=%lu, deltaCycles=%lu, IPC=%.3f\n",
             computeUnit->cu_id, deltaInsts, deltaCycles, ipc);
   }
 
@@ -297,14 +297,14 @@ GPUDVFSController::adjustFrequency(int newLevel)
     int domain_id = computeUnit->cu_id;
     int currentLevel = dvfsHandler->perfLevel(domain_id);
 
-    DPRINTF(DVFS, "Adjusting CU %d frequency: Level %d -> %d at tick %lu\n",
+    DPRINTF(GPU_DVFS, "Adjusting CU %d frequency: Level %d -> %d at tick %lu\n",
             computeUnit->cu_id, currentLevel, newLevel, curTick());
 
     // Request DVFS change for this CU's domain
     bool success = dvfsHandler->perfLevel(domain_id, newLevel);
 
     if (!success) {
-        DPRINTF(DVFS, "CU %d DVFS: Failed to transition from level %d to %d\n",
+        DPRINTF(GPU_DVFS, "CU %d DVFS: Failed to transition from level %d to %d\n",
              computeUnit->cu_id, currentLevel, newLevel);
     }
 }

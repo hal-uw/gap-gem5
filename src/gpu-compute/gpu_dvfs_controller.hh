@@ -36,22 +36,22 @@ class GPUDVFSController : public SimObject
     EventFunctionWrapper evaluateEvent;
 
     // CRISP methods
-    uint64_t calculateCRISPDelay(const ComputeUnit::CRISPCycleCounter &counters,
+    uint64_t calculateCRISPDelay(const ComputeUnit::CRISPStatCount &counters,
                                  double currentFreqMHz,
                                  double targetFreqMHz) const;
 
-    double calculateCRISPEDP(const ComputeUnit::CRISPCycleCounter &counters,
+    double calculateCRISPEDP(const ComputeUnit::CRISPStatCount &counters,
                             double staticPower, double dynamicPower,
                             double currentFreqMHz, double targetFreqMHz,
                             double voltageCurrent, double voltageTarget) const;
 
     // Helper methods
     double tickToFrequencyMHz(Tick clkPeriod) const;
-    int selectOptimalFrequencyEDP(const ComputeUnit::CRISPCycleCounter &crispCounters) const;
+    int selectOptimalFrequencyEDP(const ComputeUnit::CRISPStatCount &crispCounters) const;
 
     // Extract average power from accumulated energy measurements
     // Returns true if valid power data available, false otherwise
-    bool extractAveragePower(const ComputeUnit::CRISPCycleCounter &crispCounters,
+    bool extractAveragePower(const ComputeUnit::CRISPStatCount &crispCounters,
                             double &staticPower, double &dynamicPower) const;
 
     // Core policy methods

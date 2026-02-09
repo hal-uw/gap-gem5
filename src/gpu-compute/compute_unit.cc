@@ -49,6 +49,8 @@
 #include "debug/GPURename.hh"
 #include "debug/GPUSync.hh"
 #include "debug/GPUTLB.hh"
+#include "debug/GPU_DVFS.hh"
+#include "debug/GPU_DVFS_PER_CYCLE.hh"
 #include "gpu-compute/dispatcher.hh"
 #include "gpu-compute/gpu_command_processor.hh"
 #include "gpu-compute/gpu_dyn_inst.hh"
@@ -125,13 +127,13 @@ ComputeUnit::ComputeUnit(const Params &p) : ClockedObject(p),
     globalSeqNum(0), wavefrontSize(p.wf_size),
     scoreboardCheckToSchedule(p),
     scheduleToExecute(p),
-    stats(this, p.n_wf),
     tcpCache(p.tcp_cache), sqcCache(p.sqc_cache),
     gpuCoalescer(dynamic_cast<ruby::GPUCoalescer*>(p.gpu_coalescer)),
     crispCycleCounter{},
     _prevDynamicPower(0.0), // Initialize
     _prevStaticPower(0.0),  // Initialize
-    _prevSimSeconds(0.0)    // Initialize
+    _prevSimSeconds(0.0),    // Initialize
+    stats(this, p.n_wf)
 {
     // This is not currently supported and would require adding more handling
     // for system vs. device memory requests on the functional paths, so we
@@ -2395,7 +2397,7 @@ ComputeUnit::dumpAndClearCycleLog()
         };
 
         // Print cycle category counters summary
-        DPRINTF(DVFS, "CYCLE_COUNTERS,%d,%lu,%lu,%lu,%lu\n",
+        DPRINTF(GPU_DVFS, "CYCLE_COUNTERS,%d,%lu,%lu,%lu,%lu\n",
                cu_id,
                cycleCategoryCounters.busyCompute,
                cycleCategoryCounters.idleLoadStall,
@@ -2403,7 +2405,7 @@ ComputeUnit::dumpAndClearCycleLog()
                cycleCategoryCounters.idleCompute);
 
         // Print CRISP cycle counters summary
-        DPRINTF(DVFS, "CRISP_COUNTERS,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.10f,%.10f,%.10f\n",
+        DPRINTF(GPU_DVFS, "CRISP_COUNTERS,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.10f,%.10f,%.10f\n",
                cu_id,
                crispCycleCounter.TMemoryStallCycles,
                crispCycleCounter.TStall_LCP,
@@ -2425,7 +2427,7 @@ ComputeUnit::dumpAndClearCycleLog()
         //         has_scalar_raw_load,has_scalar_raw_arith,has_structural_hazard,
         //         has_lsq_full,category
         for (const auto& entry : cycleLog) {
-            DPRINTF(DVFS_PER_CYCLE, 
+            DPRINTF(GPU_DVFS_PER_CYCLE, 
                     "CYCLE_LOG,%d,%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s\n",
                    cu_id, entry.cycleNumber, entry.instructionsIssued,
                    entry.busyExeUnits, entry.hasOutstandingLoads,
