@@ -35,6 +35,7 @@
 #include <deque>
 #include <map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "base/callback.hh"
@@ -69,6 +70,11 @@ class VectorRegisterFile;
 class RegisterFileCache;
 
 struct ComputeUnitParams;
+
+namespace ruby {
+  class CacheMemory;
+  class GPUCoalescer;
+}
 
 enum EXEC_POLICY
 {
@@ -202,7 +208,6 @@ class WFBarrier
 class ComputeUnit : public ClockedObject
 {
   public:
-
 
     // Execution resources
     //
@@ -424,6 +429,175 @@ class ComputeUnit : public ClockedObject
     int getCacheLineBits() const { return cacheLineBits; }
 
     void resetRegisterPool();
+
+  public:
+    enum class CycleType {
+      BUSY_COMPUTE,       // At least one execution unit issued an instruction
+      IDLE_LOAD_STALL,    // Idle due to load stalls
+      IDLE_STORE_STALL,   // Idle due to store stalls
+      IDLE_COMPUTE,       // Idle but not stalled on memory
+      UNCLASSIFIED
+    };
+
+    struct CycleTypeCount {
+      uint64_t busyCompute    = 0;
+      uint64_t idleLoadStall  = 0;
+      uint64_t idleStoreStall = 0;
+      uint64_t idleCompute    = 0;
+
+      void reset() {
+        busyCompute   = 0;
+        idleLoadStall = 0;
+        idleStoreStall= 0;
+        idleCompute   = 0;
+      }
+
+      void increment(CycleType cycle_type) {
+        switch (cycle_type) {
+          case CycleType::BUSY_COMPUTE:
+            busyCompute++;
+            break;
+          case CycleType::IDLE_LOAD_STALL:
+            idleLoadStall++;
+            break;
+          case CycleType::IDLE_STORE_STALL:
+            idleStoreStall++;
+            break;
+          case CycleType::IDLE_COMPUTE:
+            idleCompute++;
+            break;
+          default:
+            // Don't count unclassified cycles
+            break;
+        }
+      }
+    };
+
+    // Per-cycle metrics for DVFS tracking
+    struct CycleStats {
+      uint64_t cycleNumber;
+
+      int instructionsIssued;
+      int busyExeUnits;
+      int hasOutstandingLoads;
+      int hasOutstandingStores;
+      int hasFetchStall;
+      int hasTCPBankConflict;
+      int hasSQCBankConflict;
+      int hasMSHRStall;
+      int hasVecRawFromLoad;
+      int hasVecRawFromArith;
+      int hasScalarRawFromLoad;
+      int hasScalarRawFromArith;
+      int hasStructuralHazard;
+      int hasLSQFull;
+
+      double dynamicPower; // Dynamic power for this cycle
+      double staticPower;  // Static power for this cycle
+      double simSeconds;   // Simulation time in seconds at this cycle
+
+      CycleType cycle_type;
+    };
+
+    struct CRISPStatCount{
+      //Classification count / Accum
+      uint64_t TMemoryStallCycles = 0;
+      uint64_t TStall_LCP         = 0;
+      uint64_t TStall_CSP         = 0;  
+      uint64_t TotalCompute       = 0;
+      uint64_t OverlappedCompute  = 0;
+      uint64_t PureCompute        = 0; 
+      uint64_t busyCompute        = 0;
+      uint64_t idleCompute        = 0; 
+
+      //Window of evalutation energy 
+      double totalDynamicEnergy   = 0.0; // Accumulated dynamic energy in Joules
+      double totalStaticEnergy    = 0.0;  // Accumulated static energy in Joules
+      double totalSimSecondsDelta = 0.0; // Accumulated simulation time delta in seconds
+
+      void reset() {
+        TMemoryStallCycles  = 0;
+        TStall_LCP          = 0;
+        TStall_CSP          = 0;
+        TotalCompute        = 0;
+        OverlappedCompute   = 0;
+        PureCompute         = 0;
+        busyCompute         = 0;
+        idleCompute         = 0;
+
+        totalDynamicEnergy    = 0.0;
+        totalStaticEnergy     = 0.0;
+        totalSimSecondsDelta  = 0.0;
+      }
+    };
+
+    struct OutstandingMemOps {
+      int hasLoads;
+      int hasStores;
+    };
+
+    // Bank conflict tracking for L1 caches
+    struct CacheBankConflictTracker {
+      uint64_t prevTagStalls          = 0;
+      uint64_t prevDataStalls         = 0;
+      int tagConflictCyclesRemaining  = 0;
+      int dataConflictCyclesRemaining = 0;
+    };
+
+    // Previous power and time values for delta calculations
+    double _prevDynamicPower  = 0.0;
+    double _prevStaticPower   = 0.0;
+    double _prevSimSeconds    = 0.0;
+
+    // CRISP DVFS additions
+    CycleType classifyCurrentCycle(CycleStats &cstats);
+
+    // CRISP cycle counter
+    void updateCRISPCounters(const CycleStats &cstats);
+
+    // DVFS cycle logging
+    int numBusyExeUnits() const;
+    OutstandingMemOps getOutstandingMemOps() const;
+    int numStalledFetchUnits() const;
+    void updateBankConflictTracking(ruby::CacheMemory* cache,
+                                    CacheBankConflictTracker& tracker,
+                                    int tagLatency, int dataLatency);
+    CycleStats logCycleMetrics();
+    std::pair<CycleTypeCount, CRISPStatCount> dumpAndClearCycleLog();
+
+    // Per-cycle RAW hazard flags (set by scoreboard, read by logCycleMetrics)
+    bool vecRawFromLoadThisCycle;
+    bool vecRawFromArithThisCycle;
+    bool scalarRawFromLoadThisCycle;
+    bool scalarRawFromArithThisCycle;
+
+    // Per-cycle structural hazard flag (set by schedule stage, read by logCycleMetrics)
+    bool structuralHazardThisCycle;
+
+    // Per-cycle LSQ full flag (set by schedule stage, read by logCycleMetrics)
+    bool lsqFullThisCycle;
+
+  private:
+    // Log of per-cycle metrics for DVFS tracking
+    std::vector<CycleStats> cycleLog;
+
+    // Counters for cycle classification categories
+    CycleTypeCount cycleCategoryCounters;
+
+    // CRISP Cycle Classification State counter
+    CRISPStatCount crispCycleCounter;
+
+    // Bank conflict tracking state for TCP and SQC caches
+    CacheBankConflictTracker tcpBankConflictTracker;
+    CacheBankConflictTracker sqcBankConflictTracker;
+
+    // L1 cache pointers for bank conflict tracking
+    ruby::CacheMemory* tcpCache;
+    ruby::CacheMemory* sqcCache;
+
+    // GPU coalescer pointer for MSHR stall tracking
+    ruby::GPUCoalescer* gpuCoalescer;
+      
 
   private:
     WFBarrier&
