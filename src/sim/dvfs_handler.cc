@@ -41,7 +41,7 @@
 #include <utility>
 
 #include "base/trace.hh"
-#include "debug/DVFS.hh"
+#include "debug/GPU_DVFS.hh"
 #include "params/DVFSHandler.hh"
 #include "sim/serialize.hh"
 #include "sim/stat_control.hh"
@@ -88,9 +88,9 @@ DVFSHandler::DVFSHandler(const Params &p)
     UpdateEvent::dvfsHandler = this;
 
     // Debug: Print what domains were registered
-    DPRINTF(DVFS, "DVFSHandler %s: Registered %d domains:\n", name(), domains.size());
+    DPRINTF(GPU_DVFS, "DVFSHandler %s: Registered %zu domains:\n", name(), domains.size());
     for (const auto& pair : domains) {
-        DPRINTF(DVFS, "  Domain ID %d: %s\n", pair.first, pair.second->name());
+        DPRINTF(GPU_DVFS, "  Domain ID %d: %s\n", pair.first, pair.second->name());
     }
 }
 
@@ -125,7 +125,7 @@ DVFSHandler::perfLevel(DomainID domain_id, PerfLevel perf_level)
 {
     assert(isEnabled());
 
-    DPRINTF(DVFS, "DVFS: setPerfLevel domain %d -> %d\n", domain_id, perf_level);
+    DPRINTF(GPU_DVFS, "DVFS: setPerfLevel domain %d -> %d\n", domain_id, perf_level);
 
     auto d = findDomain(domain_id);
     if (!d->validPerfLevel(perf_level)) {
@@ -138,7 +138,7 @@ DVFSHandler::perfLevel(DomainID domain_id, PerfLevel perf_level)
     // Drop an old DVFS change request once we have established that this is a
     // reasonable request
     if (update_event->scheduled()) {
-        DPRINTF(DVFS, "DVFS: Overwriting the previous DVFS event.\n");
+        DPRINTF(GPU_DVFS, "DVFS: Overwriting the previous DVFS event.\n");
         deschedule(update_event);
     }
 
@@ -147,14 +147,14 @@ DVFSHandler::perfLevel(DomainID domain_id, PerfLevel perf_level)
     // State changes that restore to the current state (and / or overwrite a not
     // yet completed in-flight request) will be squashed
     if (d->perfLevel() == perf_level) {
-        DPRINTF(DVFS, "DVFS: Ignoring ineffective performance level change "\
+        DPRINTF(GPU_DVFS, "DVFS: Ignoring ineffective performance level change "\
                 "%d -> %d\n", d->perfLevel(), perf_level);
         return false;
     }
 
     // At this point, a new transition will certainly take place -> schedule
     Tick when = curTick() + _transLatency;
-    DPRINTF(DVFS, "DVFS: Update for perf event scheduled for %ld\n", when);
+    DPRINTF(GPU_DVFS, "DVFS: Update for perf event scheduled for %ld\n", when);
 
     schedule(update_event, when);
     return true;
@@ -164,18 +164,18 @@ void
 DVFSHandler::UpdateEvent::updatePerfLevel()
 {
     // Debug: Print what we're trying to do
-    DPRINTF(DVFS, "UpdateEvent: Updating domain %d to perf level %d\n",
+    DPRINTF(GPU_DVFS, "UpdateEvent: Updating domain %d to perf level %d\n",
          domainIDToSet, perfLevelToSet);
-    DPRINTF(DVFS, "UpdateEvent: dvfsHandler = %p, handler name = %s\n",
+    DPRINTF(GPU_DVFS, "UpdateEvent: dvfsHandler = %p, handler name = %s\n",
          dvfsHandler, dvfsHandler->name());
-    DPRINTF(DVFS, "UpdateEvent: Handler has %d domains\n", dvfsHandler->domains.size());
+    DPRINTF(GPU_DVFS, "UpdateEvent: Handler has %d domains\n", dvfsHandler->domains.size());
     // Perform explicit stats dump for power estimation before performance
     // level migration
     statistics::dump();
     statistics::reset();
 
     // Update the performance level in the clock domain
-    DPRINTF(DVFS, "UpdateEvent: About to find domain %d\n", domainIDToSet);
+    DPRINTF(GPU_DVFS, "UpdateEvent: About to find domain %d\n", domainIDToSet);
     auto d = dvfsHandler->findDomain(domainIDToSet);
     assert(d->perfLevel() != perfLevelToSet);
 
@@ -193,7 +193,7 @@ DVFSHandler::voltageAtPerfLevel(DomainID domain_id, PerfLevel perf_level) const
 
     // Request outside of the range of the voltage domain
     if (n == 1) {
-        DPRINTF(DVFS, "DVFS: Request for perf-level %i for single-point "\
+        DPRINTF(GPU_DVFS, "DVFS: Request for perf-level %i for single-point "\
                 "voltage domain %s.  Returning voltage at level 0: %.2f "\
                 "V\n", perf_level, d->name(), d->voltage(0));
         // Special case for single point voltage domain -> same voltage for
