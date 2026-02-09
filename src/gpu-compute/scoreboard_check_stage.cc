@@ -167,12 +167,26 @@ ScoreboardCheckStage::ready(Wavefront *w, nonrdytype_e *rdyStatus,
     // Non-scalar (i.e., vector) instructions may use VGPRs
     if (!ii->isScalar()) {
         if (!computeUnit.vrf[w->simdId]->operandsReady(w, ii)) {
+            // Propagate RAW hazard type to ComputeUnit
+            if (w->lastVecRawFromLoad) {
+                computeUnit.vecRawFromLoadThisCycle = true;
+            }
+            if (w->lastVecRawFromArith) {
+                computeUnit.vecRawFromArithThisCycle = true;
+            }
             *rdyStatus = NRDY_VGPR_NRDY;
             return false;
         }
     }
     // Scalar and non-scalar instructions may use SGPR
     if (!computeUnit.srf[w->simdId]->operandsReady(w, ii)) {
+        // Propagate RAW hazard type to ComputeUnit
+        if (w->lastScalarRawFromLoad) {
+            computeUnit.scalarRawFromLoadThisCycle = true;
+        }
+        if (w->lastScalarRawFromArith) {
+            computeUnit.scalarRawFromArithThisCycle = true;
+        }
         *rdyStatus = NRDY_SGPR_NRDY;
         return false;
     }

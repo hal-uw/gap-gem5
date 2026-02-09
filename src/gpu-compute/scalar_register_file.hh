@@ -101,6 +101,9 @@ class ScalarRegisterFile : public RegisterFile
 
   private:
     std::vector<ScalarRegU32> regFile;
+
+    // Track whether last producer was a load/atomic for each register
+    std::vector<bool> lastProducerWasLoadSgpr;
 };
 
 } // namespace gem5

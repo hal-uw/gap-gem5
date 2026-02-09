@@ -248,6 +248,9 @@ ScheduleStage::schedRfWrites(int exeType, const GPUDynInstPtr &gpu_dyn_inst)
         computeUnit.srf[wf->simdId]->scheduleWriteOperands(wf, gpu_dyn_inst);
         return true;
     } else {
+        // RF write structural hazard
+        computeUnit.structuralHazardThisCycle = true;
+
         stats.rfAccessStalls[SCH_RF_ACCESS_NRDY]++;
         if (!accessSrfWr) {
             stats.rfAccessStalls[SCH_SRF_WR_ACCESS_NRDY]++;
@@ -343,6 +346,9 @@ ScheduleStage::addToSchList(int exeType, const GPUDynInstPtr &gpu_dyn_inst)
                 gpu_dyn_inst->seqNum(), gpu_dyn_inst->disassemble());
         return true;
     } else {
+        // RF read structural hazard
+        computeUnit.structuralHazardThisCycle = true;
+
         // Number of stall cycles due to RF access denied
         stats.rfAccessStalls[SCH_RF_ACCESS_NRDY]++;
         // Count number of denials due to each reason
@@ -439,15 +445,18 @@ ScheduleStage::dispatchReady(const GPUDynInstPtr &gpu_dyn_inst)
         // TODO: Scalar NOP does not require SALU in hardware,
         // and is executed out of IB directly.
         if (gpu_dyn_inst->isScalar() && !scalarAluRdy) {
+            computeUnit.structuralHazardThisCycle = true;
             stats.dispNrdyStalls[SCH_SCALAR_ALU_NRDY]++;
             return false;
         } else if (!gpu_dyn_inst->isScalar() && !vectorAluRdy) {
+            computeUnit.structuralHazardThisCycle = true;
             stats.dispNrdyStalls[SCH_VECTOR_ALU_NRDY]++;
             return false;
         }
     } else if (gpu_dyn_inst->isEndOfKernel()) {
         // EndPgm instruction
         if (gpu_dyn_inst->isScalar() && !scalarAluRdy) {
+            computeUnit.structuralHazardThisCycle = true;
             stats.dispNrdyStalls[SCH_SCALAR_ALU_NRDY]++;
             return false;
         }
@@ -455,9 +464,11 @@ ScheduleStage::dispatchReady(const GPUDynInstPtr &gpu_dyn_inst)
                || gpu_dyn_inst->isALU()) {
         // Barrier, Branch, or ALU instruction
         if (gpu_dyn_inst->isScalar() && !scalarAluRdy) {
+            computeUnit.structuralHazardThisCycle = true;
             stats.dispNrdyStalls[SCH_SCALAR_ALU_NRDY]++;
             return false;
         } else if (!gpu_dyn_inst->isScalar() && !vectorAluRdy) {
+            computeUnit.structuralHazardThisCycle = true;
             stats.dispNrdyStalls[SCH_VECTOR_ALU_NRDY]++;
             return false;
         }
@@ -479,8 +490,11 @@ ScheduleStage::dispatchReady(const GPUDynInstPtr &gpu_dyn_inst)
         if (!computeUnit.globalMemoryPipe.outstandingReqsCheck(gpu_dyn_inst)) {
             rdy = false;
             stats.dispNrdyStalls[SCH_VECTOR_MEM_REQS_NRDY]++;
+            // Vector global memory LSQ full
+            computeUnit.lsqFullThisCycle = true;
         }
         if (!rdy) {
+            computeUnit.structuralHazardThisCycle = true;
             return false;
         }
     } else if (gpu_dyn_inst->isScalar() && gpu_dyn_inst->isGlobalMem()) {
@@ -500,8 +514,12 @@ ScheduleStage::dispatchReady(const GPUDynInstPtr &gpu_dyn_inst)
         {
             rdy = false;
             stats.dispNrdyStalls[SCH_SCALAR_MEM_FIFO_NRDY]++;
+
+            // Scalar global memory LSQ full
+            computeUnit.lsqFullThisCycle = true;
         }
         if (!rdy) {
+            computeUnit.structuralHazardThisCycle = true;
             return false;
         }
     } else if (!gpu_dyn_inst->isScalar() && gpu_dyn_inst->isLocalMem()) {
@@ -519,8 +537,12 @@ ScheduleStage::dispatchReady(const GPUDynInstPtr &gpu_dyn_inst)
                 isLMReqFIFOWrRdy(wf->rdLmReqsInPipe + wf->wrLmReqsInPipe)) {
             rdy = false;
             stats.dispNrdyStalls[SCH_LOCAL_MEM_FIFO_NRDY]++;
+
+            // Local memory LSQ full
+            computeUnit.lsqFullThisCycle = true;
         }
         if (!rdy) {
+            computeUnit.structuralHazardThisCycle = true;
             return false;
         }
     } else if (!gpu_dyn_inst->isScalar() && gpu_dyn_inst->isFlat()) {
@@ -548,6 +570,7 @@ ScheduleStage::dispatchReady(const GPUDynInstPtr &gpu_dyn_inst)
             stats.dispNrdyStalls[SCH_FLAT_MEM_FIFO_NRDY]++;
         }
         if (!rdy) {
+            computeUnit.structuralHazardThisCycle = true;
             return false;
         }
     } else {

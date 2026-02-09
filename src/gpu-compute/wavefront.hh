@@ -328,6 +328,12 @@ class Wavefront : public SimObject
     std::string lastInstDisasm;
     std::string lastInstRdyStatus;
     bool lastVrfStatus, lastSrfStatus;
+    
+    // RAW hazard classification for current instruction check
+    bool lastVecRawFromLoad;
+    bool lastVecRawFromArith;
+    bool lastScalarRawFromLoad;
+    bool lastScalarRawFromArith;
 
   private:
     TheGpuISA::GPUISA _gpuISA;

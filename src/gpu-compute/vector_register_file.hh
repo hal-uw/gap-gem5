@@ -108,6 +108,9 @@ class VectorRegisterFile : public RegisterFile
     }
 
   private:
+    // Track whether last producer was a load/atomic for each register
+    std::vector<bool> lastProducerWasLoadVec;
+    
     std::vector<VecRegContainer> regFile;
 };
 

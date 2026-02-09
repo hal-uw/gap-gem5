@@ -251,6 +251,9 @@ class GPUCoalescer : public RubyPort
     void resetStats() override;
     void collateStats();
 
+    // Check if MSHR is currently full
+    bool isMSHRFull() const { return m_outstanding_count >= m_max_outstanding_requests; }
+
     // each store request needs two callbacks:
     //  (1) writeCallback is called when the store is received and processed
     //      by TCP. This writeCallback does not guarantee the store is actually

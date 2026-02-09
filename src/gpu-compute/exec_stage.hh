@@ -84,6 +84,9 @@ class ExecStage
 
     const std::string& name() const { return _name; }
 
+    // Getter for DVFS cycle logging
+    int getExecutionResourcesUsed() const { return executionResourcesUsed; }
+
   private:
     void collectStatistics(enum STAT_STATUS stage, int unitId);
     void initStatistics();

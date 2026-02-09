@@ -121,6 +121,10 @@ class CacheMemory : public SimObject
     Cycles getTagLatency() const { return tagArray.getLatency(); }
     Cycles getDataLatency() const { return dataArray.getLatency(); }
 
+    // Get bank conflict stall counts for tracking
+    uint64_t getTagArrayStalls() const { return cacheMemoryStats.numTagArrayStalls.value(); }
+    uint64_t getDataArrayStalls() const { return cacheMemoryStats.numDataArrayStalls.value(); }
+
     bool isBlockInvalid(int64_t cache_set, int64_t loc);
     bool isBlockNotBusy(int64_t cache_set, int64_t loc);
 
