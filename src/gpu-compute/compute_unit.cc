@@ -32,6 +32,9 @@
 #include "gpu-compute/compute_unit.hh"
 
 #include <limits>
+#include "params/ClockedObject.hh"
+#include "sim/core.hh"
+#include "sim/power/power_model.hh"
 
 #include "arch/amdgpu/common/gpu_translation_state.hh"
 #include "arch/amdgpu/common/tlb.hh"
@@ -59,6 +62,9 @@
 #include "gpu-compute/vector_register_file.hh"
 #include "gpu-compute/wavefront.hh"
 #include "mem/page_table.hh"
+#include "mem/ruby/structures/CacheMemory.hh"
+#include "mem/ruby/system/GPUCoalescer.hh"
+#include "mem/ruby/system/RubyPort.hh"
 #include "sim/process.hh"
 #include "sim/sim_exit.hh"
 
@@ -188,7 +194,13 @@ ComputeUnit::ComputeUnit(const Params &p) : ClockedObject(p),
     globalSeqNum(0), wavefrontSize(p.wf_size),
     scoreboardCheckToSchedule(p),
     scheduleToExecute(p),
-    stats(this, p.n_wf)
+    stats(this, p.n_wf),
+    tcpCache(p.tcp_cache), sqcCache(p.sqc_cache),
+    gpuCoalescer(dynamic_cast<ruby::GPUCoalescer*>(p.gpu_coalescer)),
+    crispCycleCounter{},
+    _prevDynamicPower(0.0), // Initialize
+    _prevStaticPower(0.0),  // Initialize
+    _prevSimSeconds(0.0)    // Initialize
 {
     // This is not currently supported and would require adding more handling
     // for system vs. device memory requests on the functional paths, so we
@@ -307,6 +319,18 @@ ComputeUnit::ComputeUnit(const Params &p) : ClockedObject(p),
 
     // Used for periodic pipeline prints
     execCycles = 0;
+    
+    // Initialize per-cycle RAW hazard flags
+    vecRawFromLoadThisCycle     = false;
+    vecRawFromArithThisCycle    = false;
+    scalarRawFromLoadThisCycle  = false;
+    scalarRawFromArithThisCycle = false;
+
+    // Initialize per-cycle structural hazard flag
+    structuralHazardThisCycle   = false;
+
+    // Initialize per-cycle LSQ full flag
+    lsqFullThisCycle            = false;
 }
 
 ComputeUnit::~ComputeUnit()
@@ -839,6 +863,19 @@ ComputeUnit::releaseWFsFromBarrier(int bar_id)
 void
 ComputeUnit::exec()
 {
+    // Reset per-cycle RAW hazard flags
+    vecRawFromLoadThisCycle     = false;
+    vecRawFromArithThisCycle    = false;
+    scalarRawFromLoadThisCycle  = false;
+    scalarRawFromArithThisCycle = false;
+
+    // Reset per-cycle structural hazard flag
+    structuralHazardThisCycle   = false;
+
+    // Reset per-cycle LSQ full flag
+    lsqFullThisCycle            = false;
+
+
     // process reads and writes in the RFs
     for (auto &vecRegFile : vrf) {
         vecRegFile->exec();
@@ -866,6 +903,13 @@ ComputeUnit::exec()
         printProgress();
         execCycles = 0;
     }
+
+    // Create metrics, classify the cycle, and log it
+    CycleStats metrics  = logCycleMetrics();
+    CycleType  category = classifyCurrentCycle(metrics);
+    cycleCategoryCounters.increment(category);
+    updateCRISPCounters(metrics);
+    cycleLog.push_back(metrics);
 
     // Put this CU to sleep if there is no more work to be done.
     if (!isDone()) {
@@ -2429,6 +2473,372 @@ ComputeUnit::LDSPort::recvReqRetry()
             retries.pop();
         }
     }
+}
+
+ComputeUnit::CycleStats
+ComputeUnit::logCycleMetrics()
+{
+    CycleStats metrics;
+    metrics.cycleNumber         = stats.totalCycles.value();
+    metrics.instructionsIssued  = execStage.getExecutionResourcesUsed();
+    metrics.busyExeUnits        = numBusyExeUnits();
+
+    // Populate power metrics from this CU's power model
+    // Each CU has one power model in the power_model vector
+    // Access through ClockedObject's params (power_model is in ClockedObjectParams)
+    const auto &clockedParams = static_cast<const ClockedObjectParams&>(params());
+
+    if (!clockedParams.power_model.empty() && clockedParams.power_model[0]) {
+        metrics.dynamicPower = clockedParams.power_model[0]->getDynamicPower();
+        metrics.staticPower = clockedParams.power_model[0]->getStaticPower();
+    } else {
+        metrics.dynamicPower = 0.0;
+        metrics.staticPower = 0.0;
+    }
+
+    // Populate simulation time in seconds
+    // Convert current tick to seconds using simulation clock frequency
+    metrics.simSeconds = static_cast<double>(curTick()) / sim_clock::Frequency;
+
+    OutstandingMemOps memOps     = getOutstandingMemOps();
+    metrics.hasOutstandingLoads  = memOps.hasLoads;
+    metrics.hasOutstandingStores = memOps.hasStores;
+
+    metrics.hasFetchStall        = (numStalledFetchUnits() > 0) ? 1 : 0;
+
+    // Update bank conflict tracking for TCP and SQC caches
+    // TCP: tag latency = 1, data latency = 4 (from GPU_VIPER.py)
+    // SQC: tag latency = 1, data latency = 1 (from GPU_VIPER.py)
+    updateBankConflictTracking(tcpCache, tcpBankConflictTracker, 1, 4);
+    updateBankConflictTracking(sqcCache, sqcBankConflictTracker, 1, 1);
+
+    metrics.hasTCPBankConflict =
+        (tcpBankConflictTracker.tagConflictCyclesRemaining > 0 ||
+         tcpBankConflictTracker.dataConflictCyclesRemaining > 0) ? 1 : 0;
+    metrics.hasSQCBankConflict =
+        (sqcBankConflictTracker.tagConflictCyclesRemaining > 0 ||
+         sqcBankConflictTracker.dataConflictCyclesRemaining > 0) ? 1 : 0;
+
+    // Check if MSHR is full in the GPU coalescer
+    metrics.hasMSHRStall = (gpuCoalescer && gpuCoalescer->isMSHRFull()) ? 1 : 0;
+
+    // Log RAW hazard flags
+    metrics.hasVecRawFromLoad     = vecRawFromLoadThisCycle ? 1 : 0;
+    metrics.hasVecRawFromArith    = vecRawFromArithThisCycle ? 1 : 0;
+    metrics.hasScalarRawFromLoad  = scalarRawFromLoadThisCycle ? 1 : 0;
+    metrics.hasScalarRawFromArith = scalarRawFromArithThisCycle ? 1 : 0;
+
+    // Log structural hazard flag
+    metrics.hasStructuralHazard = structuralHazardThisCycle ? 1 : 0;
+
+    // Log LSQ full flag
+    metrics.hasLSQFull = lsqFullThisCycle ? 1 : 0;
+
+    // Initialize category as unclassified
+    metrics.cycle_type = CycleType::UNCLASSIFIED;
+
+    return metrics;
+}
+
+std::pair<ComputeUnit::CycleTypeCount, ComputeUnit::CRISPStatCount>
+ComputeUnit::dumpAndClearCycleLog()
+{
+    // Make copies of both counter structures to return
+    CycleTypeCount cycleCatCounters     = cycleCategoryCounters;
+    CRISPStatCount crispCounters        = crispCycleCounter;
+
+    if (!cycleLog.empty()) {
+        // Helper lambda to convert CycleType to string
+        auto categoryToString = [](CycleType cat) -> const char* {
+            switch (cat) {
+                case CycleType::BUSY_COMPUTE:     return "BUSY_COMPUTE";
+                case CycleType::IDLE_LOAD_STALL:  return "IDLE_LOAD_STALL";
+                case CycleType::IDLE_STORE_STALL: return "IDLE_STORE_STALL";
+                case CycleType::IDLE_COMPUTE:     return "IDLE_COMPUTE";
+                case CycleType::UNCLASSIFIED:     return "UNCLASSIFIED";
+                default:                          return "UNKNOWN";
+            }
+        };
+
+        // Print cycle category counters summary
+        DPRINTF(DVFS, "CYCLE_COUNTERS,%d,%lu,%lu,%lu,%lu\n",
+               cu_id,
+               cycleCategoryCounters.busyCompute,
+               cycleCategoryCounters.idleLoadStall,
+               cycleCategoryCounters.idleStoreStall,    
+               cycleCategoryCounters.idleCompute);
+
+        // Print CRISP cycle counters summary
+        DPRINTF(DVFS, "CRISP_COUNTERS,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.10f,%.10f,%.10f\n",
+               cu_id,
+               crispCycleCounter.TMemoryStallCycles,
+               crispCycleCounter.TStall_LCP,
+               crispCycleCounter.TStall_CSP,
+               crispCycleCounter.OverlappedCompute,
+               crispCycleCounter.PureCompute,
+               crispCycleCounter.busyCompute,
+               crispCycleCounter.idleCompute,
+               crispCycleCounter.totalDynamicEnergy,
+               crispCycleCounter.totalStaticEnergy,
+               crispCycleCounter.totalSimSecondsDelta);
+
+        // Print cycle log to stdout in CSV format (can be piped to file)
+        // Only print per-cycle data if enablePerCycleLogging flag is set
+        // Format: CYCLE_LOG,cu_id,cycle_number,instructions_issued,
+        //         busy_exe_units,has_outstanding_loads,has_outstanding_stores,
+        //         has_fetch_stall,has_tcp_bank_conflict,has_sqc_bank_conflict,
+        //         has_mshr_stall,has_vec_raw_load,has_vec_raw_arith,
+        //         has_scalar_raw_load,has_scalar_raw_arith,has_structural_hazard,
+        //         has_lsq_full,category
+        for (const auto& entry : cycleLog) {
+            DPRINTF(DVFS_PER_CYCLE, 
+                    "CYCLE_LOG,%d,%lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%s\n",
+                   cu_id, entry.cycleNumber, entry.instructionsIssued,
+                   entry.busyExeUnits, entry.hasOutstandingLoads,
+                   entry.hasOutstandingStores, entry.hasFetchStall,
+                   entry.hasTCPBankConflict, entry.hasSQCBankConflict,
+                   entry.hasMSHRStall,
+                   entry.hasVecRawFromLoad, entry.hasVecRawFromArith,
+                   entry.hasScalarRawFromLoad, entry.hasScalarRawFromArith,
+                   entry.hasStructuralHazard, entry.hasLSQFull,
+                   categoryToString(entry.cycle_type));
+        }
+
+        // Clear the log and reset counters
+        cycleLog.clear();
+        cycleCategoryCounters.reset();
+        crispCycleCounter.reset();
+    }
+
+    // Return copies of both counters (before reset)
+    return std::make_pair(cycleCatCounters, crispCounters);
+}
+
+int
+ComputeUnit::numBusyExeUnits() const
+{
+    int busy = 0;
+
+    // Vector ALUs
+    for (int i = 0; i < numVectorALUs; ++i) {
+        if (!vectorALUs[i].rdy()) {
+            ++busy;
+        }
+    }
+
+    // Scalar ALUs
+    for (int i = 0; i < numScalarALUs; ++i) {
+        if (!scalarALUs[i].rdy()) {
+            ++busy;
+        }
+    }
+
+    // Vector Global Memory execution unit(s)
+    if (numVectorGlobalMemUnits > 0) {
+        if (!vectorGlobalMemUnit.rdy()) {
+            ++busy;
+        }
+    }
+
+    // Vector Shared/Local Memory execution unit(s)
+    if (numVectorSharedMemUnits > 0) {
+        if (!vectorSharedMemUnit.rdy()) {
+            ++busy;
+        }
+    }
+
+    // Scalar Memory execution unit(s)
+    if (numScalarMemUnits > 0) {
+        if (!scalarMemUnit.rdy()) {
+            ++busy;
+        }
+    }
+
+    return busy;
+}
+
+ComputeUnit::OutstandingMemOps
+ComputeUnit::getOutstandingMemOps() const
+{
+    // Aggregate outstanding loads and stores across all wavefronts
+    int totalOutstandingLoads   = 0;
+    int totalOutstandingStores  = 0;
+
+    for (const auto& wfVec : wfList) {
+        for (const auto& wf : wfVec) {
+            if (wf) {  // Check if wavefront pointer is valid
+                // Sum all read operations (loads)
+                totalOutstandingLoads += wf->outstandingReqsRdGm;
+                totalOutstandingLoads += wf->outstandingReqsRdLm;
+                totalOutstandingLoads += wf->scalarOutstandingReqsRdGm;
+
+                // Sum all write operations (stores)
+                totalOutstandingStores += wf->outstandingReqsWrGm;
+                totalOutstandingStores += wf->outstandingReqsWrLm;
+                totalOutstandingStores += wf->scalarOutstandingReqsWrGm;
+            }
+        }
+    }
+
+    OutstandingMemOps result;
+    result.hasLoads  = (totalOutstandingLoads > 0)  ? 1 : 0;
+    result.hasStores = (totalOutstandingStores > 0) ? 1 : 0;
+
+    return result;
+}
+
+int
+ComputeUnit::numStalledFetchUnits() const
+{
+    int stalledCount = 0;
+
+    // Check each SIMD/fetch unit
+    for (int i = 0; i < numVectorALUs; ++i) {
+        bool simdHasPendingFetch = false;
+
+        // Check all wavefront slots for this SIMD
+        for (int j = 0; j < shader->n_wf; ++j) {
+            Wavefront *wf = wfList[i][j];
+
+            // Check if wavefront has pending instruction fetch
+            if (wf && wf->pendingFetch) {
+                simdHasPendingFetch = true;
+                break;  // One pending fetch is enough
+            }
+        }
+
+        if (simdHasPendingFetch) {
+            ++stalledCount;
+        }
+    }
+
+    return stalledCount;
+}
+
+void
+ComputeUnit::updateBankConflictTracking(ruby::CacheMemory* cache,
+                                         CacheBankConflictTracker& tracker,
+                                         int tagLatency, int dataLatency)
+{
+    if (!cache) {
+        return;
+    }
+
+    // Get current stall counts from cache statistics
+    uint64_t currentTagStalls  = cache->getTagArrayStalls();
+    uint64_t currentDataStalls = cache->getDataArrayStalls();
+
+    // Check for new tag array conflicts
+    if (currentTagStalls > tracker.prevTagStalls) {
+        tracker.tagConflictCyclesRemaining = tagLatency;
+    }
+
+    // Check for new data array conflicts
+    if (currentDataStalls > tracker.prevDataStalls) {
+        tracker.dataConflictCyclesRemaining = dataLatency;
+    }
+
+    // Decrement conflict cycle counters
+    if (tracker.tagConflictCyclesRemaining > 0) {
+        tracker.tagConflictCyclesRemaining--;
+    }
+    if (tracker.dataConflictCyclesRemaining > 0) {
+        tracker.dataConflictCyclesRemaining--;
+    }
+
+    // Update previous stall counts
+    tracker.prevTagStalls = currentTagStalls;
+    tracker.prevDataStalls = currentDataStalls;
+}
+
+// The following function classifies the current cycle into following categories:
+//  1. BUSY_COMPUTE: At least one of the execution units got issued an instruction
+//  2. IDLE_LOAD_STALL: Idle due to load stalls
+//  3. IDLE_STORE_STALL: Idle due to store stalls
+//  4. IDLE_COMPUTE: Idle but not stalled on memory
+
+ComputeUnit::CycleType
+ComputeUnit::classifyCurrentCycle(CycleStats &cstats)
+{
+    CycleType category;
+
+    // Check if compute units are busy OR if single unit is busy due to compute-side hazards
+    // Multiple busy units = productive compute
+    // Single busy unit + compute hazards = compute-bound (frequency-dependent)
+    // Single busy unit without compute hazards may be memory-bound
+    if (cstats.busyExeUnits > 1 ||
+        (cstats.busyExeUnits == 1 &&
+         (cstats.hasVecRawFromArith || cstats.hasScalarRawFromArith ||
+          cstats.hasStructuralHazard))) {
+        category = CycleType::BUSY_COMPUTE;
+    } else {
+        // Idle cycle - determine the cause
+
+        // Check if the compute unit is stalled on load
+        if (cstats.hasOutstandingLoads &&
+           ((cstats.hasVecRawFromLoad || cstats.hasScalarRawFromLoad)
+           || cstats.hasMSHRStall
+           || cstats.hasLSQFull
+           || cstats.hasFetchStall)) {
+            category = CycleType::IDLE_LOAD_STALL;
+        }
+        // Check if stalled on store
+        else if (!cstats.hasOutstandingLoads &&
+                (cstats.hasMSHRStall || cstats.hasLSQFull)) {
+            category = CycleType::IDLE_STORE_STALL;
+        }
+        // Otherwise, it's idle compute (not stalled on memory)
+        else {
+            category = CycleType::IDLE_COMPUTE;
+        }
+    }
+
+    // Set the category in the metrics object
+    cstats.cycle_type = category;
+
+    return category;
+}
+
+void
+ComputeUnit::updateCRISPCounters(const CycleStats &cstats){
+    // Calculate deltas for power and time
+    double deltaSimSeconds = cstats.simSeconds - _prevSimSeconds;
+
+    // Only accumulate if this is not the very first cycle or a reset
+    if (_prevSimSeconds != 0.0 && deltaSimSeconds > 0) {
+        double deltaDynamicEnergy = _prevDynamicPower * deltaSimSeconds;
+        double deltaStaticEnergy  = _prevStaticPower * deltaSimSeconds;
+        
+        crispCycleCounter.totalDynamicEnergy += deltaDynamicEnergy;
+        crispCycleCounter.totalStaticEnergy += deltaStaticEnergy;
+        crispCycleCounter.totalSimSecondsDelta += deltaSimSeconds;
+    }
+
+    // Update previous values for the next cycle's delta calculation
+    _prevDynamicPower = cstats.dynamicPower;
+    _prevStaticPower = cstats.staticPower;
+    _prevSimSeconds = cstats.simSeconds;
+
+    if(cstats.hasOutstandingLoads){
+        crispCycleCounter.TMemoryStallCycles++;
+    }
+
+    if(cstats.cycle_type == CycleType::BUSY_COMPUTE){
+        crispCycleCounter.busyCompute++;
+    }else{
+        if(cstats.cycle_type == CycleType::IDLE_LOAD_STALL){
+            crispCycleCounter.TStall_LCP++;
+        }
+        else if(cstats.cycle_type == CycleType::IDLE_STORE_STALL){
+            crispCycleCounter.TStall_CSP++;
+        }
+        else if(cstats.cycle_type == CycleType::IDLE_COMPUTE){
+            crispCycleCounter.idleCompute++;
+        }
+    }
+
+    crispCycleCounter.OverlappedCompute = crispCycleCounter.TMemoryStallCycles - crispCycleCounter.TStall_LCP;
+    crispCycleCounter.PureCompute       = crispCycleCounter.busyCompute + crispCycleCounter.idleCompute - crispCycleCounter.OverlappedCompute;
 }
 
 ComputeUnit::ComputeUnitStats::ComputeUnitStats(statistics::Group *parent,
