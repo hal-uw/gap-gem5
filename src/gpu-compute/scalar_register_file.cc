@@ -46,14 +46,27 @@ ScalarRegisterFile::ScalarRegisterFile(const ScalarRegisterFileParams &p)
     : RegisterFile(p)
 {
     regFile.resize(numRegs(), 0);
+
+    // Initialize producer tracking
+    lastProducerWasLoadSgpr.assign(numRegs(), false);   
 }
 
 bool
 ScalarRegisterFile::operandsReady(Wavefront *w, GPUDynInstPtr ii) const
 {
+    // Clear wavefront RAW flags at start of check
+    w->lastScalarRawFromLoad = false;
+    w->lastScalarRawFromArith = false;
+
     for (const auto& srcScalarOp : ii->srcScalarRegOperands()) {
         for (const auto& physIdx : srcScalarOp.physIndices()) {
             if (regBusy(physIdx)) {
+                // Classify RAW type based on producer
+                if (lastProducerWasLoadSgpr[physIdx]) {
+                    w->lastScalarRawFromLoad = true;
+                } else {
+                    w->lastScalarRawFromArith = true;
+                }
                 DPRINTF(GPUSRF, "RAW stall: WV[%d]: %s: physReg[%d]\n",
                         w->wfDynId, ii->disassemble(), physIdx);
                 w->stats.numTimesBlockedDueRAWDependencies++;
@@ -83,6 +96,10 @@ ScalarRegisterFile::scheduleWriteOperands(Wavefront *w, GPUDynInstPtr ii)
         for (const auto& physIdx : dstScalarOp.physIndices()) {
             // mark the destination scalar register as busy
             markReg(physIdx, true);
+            
+            // Tag producer type for RAW hazard classification
+            lastProducerWasLoadSgpr[physIdx] =
+                (ii->isLoad() || ii->isAtomicRet());
         }
     }
 }

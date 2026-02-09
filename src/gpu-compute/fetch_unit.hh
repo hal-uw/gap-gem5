@@ -65,6 +65,9 @@ class FetchUnit
     void processFetchReturn(PacketPtr pkt);
     void flushBuf(int wfSlotId);
     static uint32_t globalFetchUnitID;
+    
+    // Check if fetch queue is empty (stalled)
+    bool isFetchQueueEmpty() const { return fetchQueue.empty(); }
 
   private:
     /**

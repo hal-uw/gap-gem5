@@ -54,16 +54,31 @@ VectorRegisterFile::VectorRegisterFile(const VectorRegisterFileParams &p)
     for (auto &reg : regFile) {
         reg.zero();
     }
+
+    // Initialize producer tracking
+    lastProducerWasLoadVec.assign(numRegs(), false);
 }
 
 bool
 VectorRegisterFile::operandsReady(Wavefront *w, GPUDynInstPtr ii) const
 {
+    // Clear wavefront RAW flags at start of check
+    w->lastVecRawFromLoad = false;
+    w->lastVecRawFromArith = false;
+
     bool src_ready = true, dst_ready=true;
     for (const auto& srcVecOp : ii->srcVecRegOperands()) {
         for (const auto& physIdx : srcVecOp.physIndices()) {
             if (regBusy(physIdx) &&
                     !computeUnit->rfc[simdId]->inRFC(physIdx)) {
+
+                // Classify RAW type based on producer
+                if (lastProducerWasLoadVec[physIdx]) {
+                    w->lastVecRawFromLoad = true;
+                } else {
+                    w->lastVecRawFromArith = true;
+                }
+
                 DPRINTF(GPUVRF, "RAW stall: WV[%d]: %s: physReg[%d]\n",
                         w->wfDynId, ii->disassemble(), physIdx);
                 w->stats.numTimesBlockedDueRAWDependencies++;
@@ -113,6 +128,10 @@ VectorRegisterFile::scheduleWriteOperands(Wavefront *w, GPUDynInstPtr ii)
                  */
                 if (ii->exec_mask.any()) {
                     markReg(physIdx, true);
+
+                    // Tag producer type for RAW hazard classification
+                    lastProducerWasLoadVec[physIdx] =
+                        (ii->isLoad() || ii->isAtomicRet());
                 }
             }
         }

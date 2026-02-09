@@ -97,6 +97,12 @@ Wavefront::Wavefront(const Params &p)
     rawDist.clear();
     lastInstExec = 0;
     vecReads.clear();
+
+    // Initialize RAW hazard tracking flags
+    lastVecRawFromLoad = false;
+    lastVecRawFromArith = false;
+    lastScalarRawFromLoad = false;
+    lastScalarRawFromArith = false;
 }
 
 void
@@ -112,6 +118,12 @@ Wavefront::init()
     globalMem = computeUnit->mapWaveToGlobalMem(this);
     localMem = computeUnit->mapWaveToLocalMem(this);
     scalarMem = computeUnit->mapWaveToScalarMem(this);
+
+    // Initialize RAW hazard tracking flags
+    lastVecRawFromLoad = false;
+    lastVecRawFromArith = false;
+    lastScalarRawFromLoad = false;
+    lastScalarRawFromArith = false;
 }
 
 void
