@@ -184,6 +184,12 @@ ComputeUnit::ComputeUnit(const Params &p) : ClockedObject(p),
             {"v_mfma_f32_32x32x16_fp8_fp8", 32},
         }}
     }),
+    _prevDynamicPower(0.0), // Initialize
+    _prevStaticPower(0.0),  // Initialize
+    _prevSimSeconds(0.0),    // Initialize         
+    crispCycleCounter{},
+    tcpCache(p.tcp_cache), sqcCache(p.sqc_cache),
+    gpuCoalescer(dynamic_cast<ruby::GPUCoalescer*>(p.gpu_coalescer)),
     _requestorId(p.system->getRequestorId(this, "ComputeUnit")),
     lds(*p.localDataStore), gmTokenPort(name() + ".gmTokenPort", this),
     ldsPort(csprintf("%s-port", name()), this),
@@ -196,12 +202,6 @@ ComputeUnit::ComputeUnit(const Params &p) : ClockedObject(p),
     globalSeqNum(0), wavefrontSize(p.wf_size),
     scoreboardCheckToSchedule(p),
     scheduleToExecute(p),
-    tcpCache(p.tcp_cache), sqcCache(p.sqc_cache),
-    gpuCoalescer(dynamic_cast<ruby::GPUCoalescer*>(p.gpu_coalescer)),
-    crispCycleCounter{},
-    _prevDynamicPower(0.0), // Initialize
-    _prevStaticPower(0.0),  // Initialize
-    _prevSimSeconds(0.0),    // Initialize
     stats(this, p.n_wf)
 {
     // This is not currently supported and would require adding more handling

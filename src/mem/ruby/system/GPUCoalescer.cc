@@ -884,7 +884,6 @@ GPUCoalescer::coalescePacket(PacketPtr pkt)
     }
 
     // The maximum number of outstanding requests have been issued.
-    stats.mshr_full_stalls++;
     return false;
 }
 

@@ -32,6 +32,10 @@ class GPUDVFSController : public SimObject
     Tick evaluationPeriod;
     bool enableFrequencyTransitions;
 
+    // State tracking for IPC calculation (single CU)
+    uint64_t lastInstCount;
+    uint64_t lastCycleCount;
+
     // Event for periodic evaluation
     EventFunctionWrapper evaluateEvent;
 

@@ -18,6 +18,9 @@ GPUDVFSController::GPUDVFSController(const Params &p)
       evaluateEvent([this]{ evaluateAndAdjust(); },
                     name() + ".evaluateEvent")
 {
+    lastInstCount = 0;
+    lastCycleCount = 0;
+
     DPRINTF(GPU_DVFS, "GPU DVFS Controller created for CU %d, "
             "eval period %lu ticks\n",
             computeUnit->cu_id, evaluationPeriod);
@@ -139,6 +142,7 @@ GPUDVFSController::calculateCRISPEDP(const ComputeUnit::CRISPStatCount &counters
     }
 
     uint64_t Tdelay = calculateCRISPDelay(counters, currentFreqMHz, targetFreqMHz);
+    uint64_t Tcurrent = calculateCRISPDelay(counters, currentFreqMHz, currentFreqMHz) / currentFreqMHz;
 
     double staticPowerScaled = staticPower * (voltageTarget / voltageCurrent);
     
