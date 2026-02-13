@@ -75,7 +75,7 @@ def createGPU(system, args):
         n_wf=args.wfs_per_simd,
         cu_per_sqc=args.cu_per_sqc,
         timing=True,
-        clk_domain=shader_clk_domain
+        clk_domain=shader_clk_domain,
         progress_interval=args.gpu_progress_interval,
     )
 

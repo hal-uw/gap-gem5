@@ -52,7 +52,7 @@
 
 #include "base/logging.hh"
 #include "base/types.hh"
-#include "debug/DVFS.hh"
+#include "debug/GPU_DVFS.hh"
 #include "params/DVFSHandler.hh"
 #include "sim/clock_domain.hh"
 #include "sim/eventq.hh"
