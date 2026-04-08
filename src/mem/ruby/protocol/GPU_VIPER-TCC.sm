@@ -73,6 +73,7 @@ machine(MachineType:TCC, "TCC Cache")
     // Probes
     PrbInv,                 desc="Invalidating probe";
     InvCache,               desc="Invalidating probe from TCP";
+    PrbDowngrade,	        desc="Downgrading probe";
     // Coming from Memory Controller
     WBAck,                  desc="writethrough ack from memory";
     Bypass,                 desc="Bypass the entire L2 cache";
@@ -349,12 +350,11 @@ machine(MachineType:TCC, "TCC Cache")
         Entry cache_entry := getCacheEntry(in_msg.addr);
         TBE tbe := TBEs.lookup(in_msg.addr);
         if (in_msg.Type == ProbeRequestType:PrbInv) {
-          // Cache is write-through. Invalidate data and send it
-          // downstream
+          // Invalidate data and send it downstream
           trigger(Event:PrbInv, in_msg.addr, cache_entry, tbe);
         } else {
-          // Cache is writeback. If data present in cache, then downgrade
-          // it and send it downstream
+          // If data present in cache, then downgrade it and send it
+          // downstream
           trigger(Event:PrbDowngrade, in_msg.addr, cache_entry, tbe);
         }
       }
@@ -666,10 +666,12 @@ machine(MachineType:TCC, "TCC Cache")
 
   action(p_profileMiss, "pm", desc="Profile cache miss") {
       L2cache.profileDemandMiss();
+      DPRINTF(RubyHitMiss, "in TCC miss at %#lx\n", address);
   }
 
   action(p_profileHit, "ph", desc="Profile cache hit") {
       L2cache.profileDemandHit();
+      DPRINTF(RubyHitMiss, "in TCC hit at %#lx\n", address);
   }
 
   action(t_allocateTBE, "t", desc="allocate TBE Entry") {
@@ -1197,7 +1199,6 @@ machine(MachineType:TCC, "TCC Cache")
   transition(I, WrVicBlkBack, W) {TagArrayRead, TagArrayWrite, DataArrayWrite} {
     p_profileMiss;
     a_allocateBlock;
-    ut_updateTag;
     swb_sendWBAck;
     wdb_writeDirtyBytes;
     p_popRequestQueue;
@@ -1248,6 +1249,25 @@ machine(MachineType:TCC, "TCC Cache")
     p_popRequestQueue;
   }
 
+  transition(I, PrbDowngrade) {TagArrayRead} {
+    pd_sendProbeResponseDowngrade;
+    pp_popProbeQueue;
+  }
+
+  transition(V, PrbDowngrade) {TagArrayRead} {
+    pd_sendProbeResponseDowngrade;
+    pp_popProbeQueue;
+  }
+
+  transition({M, W}, PrbDowngrade, V) {TagArrayRead, TagArrayWrite} {
+    pd_sendProbeResponseDowngrade;
+    pp_popProbeQueue;
+  }
+
+  transition({A, IV, WI, WIB}, PrbDowngrade) {TagArrayRead, TagArrayWrite} {
+    st_stallAndWaitRequest;
+  }
+
   transition({I, V}, PrbInv, I) {TagArrayRead, TagArrayWrite} {
     pi_sendProbeResponseInv;
     pp_popProbeQueue;
@@ -1292,7 +1312,6 @@ machine(MachineType:TCC, "TCC Cache")
 
   transition(IV, Data, V) {TagArrayRead, TagArrayWrite, DataArrayWrite} {
     a_allocateBlock;
-    ut_updateTag;
     wcb_writeCacheBlock;
     sdr_sendDataResponse;
     wada_wakeUpAllDependentsAddr;

@@ -38,6 +38,7 @@
 #include "debug/GPUCoalescer.hh"
 #include "debug/MemoryAccess.hh"
 #include "debug/ProtocolTrace.hh"
+#include "debug/RubyHitMiss.hh"
 #include "debug/RubyPort.hh"
 #include "debug/RubyStats.hh"
 #include "gpu-compute/shader.hh"
@@ -486,29 +487,17 @@ GPUCoalescer::writeCompleteCallback(Addr address,
 void
 GPUCoalescer::readCallback(Addr address, DataBlock& data)
 {
-    readCallback(address, MachineType_NULL, data);
-}
-
-void
-GPUCoalescer::readCallback(Addr address,
-                        MachineType mach,
-                        DataBlock& data)
-{
-    readCallback(address, mach, data, Cycles(0), Cycles(0), Cycles(0));
+    readCallback(address, MachineType_NULL, data, false);
 }
 
 void
 GPUCoalescer::readCallback(Addr address,
                         MachineType mach,
                         DataBlock& data,
-                        Cycles initialRequestTime,
-                        Cycles forwardRequestTime,
-                        Cycles firstResponseTime)
+                        bool externalHit = false)
 {
-
-    readCallback(address, mach, data,
-                 initialRequestTime, forwardRequestTime, firstResponseTime,
-                 false);
+    readCallback(address, mach, data, Cycles(0), Cycles(0), Cycles(0),
+            externalHit);
 }
 
 void
@@ -518,7 +507,23 @@ GPUCoalescer::readCallback(Addr address,
                         Cycles initialRequestTime,
                         Cycles forwardRequestTime,
                         Cycles firstResponseTime,
-                        bool isRegion)
+                        bool externalHit = false)
+{
+
+    readCallback(address, mach, data,
+                 initialRequestTime, forwardRequestTime, firstResponseTime,
+                 false, externalHit);
+}
+
+void
+GPUCoalescer::readCallback(Addr address,
+                        MachineType mach,
+                        DataBlock& data,
+                        Cycles initialRequestTime,
+                        Cycles forwardRequestTime,
+                        Cycles firstResponseTime,
+                        bool isRegion,
+                        bool externalHit = false)
 {
     assert(address == makeLineAddress(address));
     assert(coalescedTable.count(address));
@@ -703,6 +708,7 @@ GPUCoalescer::makeRequest(PacketPtr pkt)
         // issue mem_sync requests immediately to the cache system without
         // going through uncoalescedTable like normal LD/ST/Atomic requests
         issueMemSyncRequest(pkt);
+        stats.m_issue_mem_sync_requests++;
     } else {
         // all packets must have valid instruction sequence numbers
         assert(pkt->req->hasInstSeqNum());
@@ -879,6 +885,7 @@ GPUCoalescer::coalescePacket(PacketPtr pkt)
         return true;
     }
 
+    stats.m_mshr_resource_stall++;
     // The maximum number of outstanding requests have been issued.
     return false;
 }
@@ -895,11 +902,13 @@ GPUCoalescer::completeIssue()
         // getInstPackets will return nullptr if no instruction
         // exists at the current offset.
         if (!pkt_list) {
+            stats.m_coalescer_no_insts++;
             break;
         } else if (pkt_list->empty()) {
             // Found something, but it has not been cleaned up by update
             // resources yet. See if there is anything else to coalesce.
             // Assume we can't check anymore if the coalescing window is 1.
+            stats.m_coalescer_empty_packet++;
             continue;
         } else {
             // All packets in the list have the same seqNum, use first.
@@ -986,7 +995,7 @@ GPUCoalescer::atomicCallback(Addr address,
              "atomicCallback saw non-atomic type response\n");
 
     hitCallback(crequest, mach, (DataBlock&)data, true,
-                crequest->getIssueTime(), Cycles(0), Cycles(0), false);
+                crequest->getIssueTime(), Cycles(0), Cycles(0), false, false);
 
     delete crequest;
     coalescedTable.at(address).pop_front();
@@ -1033,6 +1042,8 @@ GPUCoalescer::completeHitCallback(std::vector<PacketPtr> & mylist)
     // uncoalesced table and makeRequest is not called again.
     if (uncoalescedTable.packetAvailable() && !issueEvent.scheduled()) {
         schedule(issueEvent, curTick());
+    } else {
+        stats.m_unable_to_issue_from_uncoalesced_table++;
     }
 
     RubySystem *rs = m_ruby_system;
@@ -1091,7 +1102,20 @@ GPUCoalescer::GPUCoalescerStats::GPUCoalescerStats(statistics::Group *parent)
     ADD_STAT(m_mshr_accesses,
             "Number of mshr accesses",
             m_mshr_ld_hits_under_miss + m_mshr_ld_misses
-            + m_mshr_st_misses)
+            + m_mshr_st_misses),
+    ADD_STAT(m_mshr_resource_stall,
+            "Number of MSHR resource stalls (out of mshrs)"),
+    ADD_STAT(m_coalescer_no_insts,
+            "Number of cycles where coalescer didn't have"
+            " any instructions to coalesce"),
+    ADD_STAT(m_coalescer_empty_packet,
+            "Number of packets where it has already been cleaned"
+            " up and coalesced"),
+    ADD_STAT(m_unable_to_issue_from_uncoalesced_table,
+            "Number of cycles where packets were available but"
+            " couldn't be scheduled to issue"),
+    ADD_STAT(m_issue_mem_sync_requests,
+            "Number of mem sync request issues")
 {
 }
 
