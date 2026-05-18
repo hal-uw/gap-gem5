@@ -40,7 +40,6 @@
 #include <vector>
 
 #include "base/perfetto.hh"
-#include "debug/GPULDS.hh"
 #include "gpu-compute/misc.hh"
 #include "mem/port.hh"
 #include "params/LdsState.hh"

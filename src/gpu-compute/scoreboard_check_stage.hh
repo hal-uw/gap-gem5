@@ -115,8 +115,6 @@ class ScoreboardCheckStage : public Named
                 return "NRDY_VGPR_NRDY";
             case NRDY_SGPR_NRDY:
                 return "NRDY_SGPR_NRDY";
-            case NRDY_MATRIX_CORE:
-                return "NRDY_MATRIX_CORE";
             case INST_RDY:
                 return "INST_RDY";
             default:

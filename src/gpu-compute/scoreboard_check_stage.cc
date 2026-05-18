@@ -275,8 +275,6 @@ ScoreboardCheckStage::exec()
                 toSchedule.markWFReady(curWave, exeResType);
 
                 ++readyCounter;
-            } else {
-                curWave->lastInstRdyStatus = rdyStatusStr(rdyStatus);
             }
             collectStatistics(rdyStatus);
         }

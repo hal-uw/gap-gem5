@@ -72,7 +72,6 @@ MessageBuffer::MessageBuffer(const Params &p)
       m_randomization(p.randomization),
       m_allow_zero_latency(p.allow_zero_latency),
       m_routing_priority(p.routing_priority),
-      m_is_inport(false),
       perfetto_sampling(p.perfetto_sampling),
       messages_enqueued(this, "Messages"),
       ADD_STAT(m_not_avail_count, statistics::units::Count::get(),
