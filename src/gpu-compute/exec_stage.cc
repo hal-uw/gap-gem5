@@ -44,10 +44,14 @@ namespace gem5
 
 ExecStage::ExecStage(const ComputeUnitParams &p, ComputeUnit &cu,
                      ScheduleToExecute &from_schedule)
-    : computeUnit(cu), fromSchedule(from_schedule),
+    : Named(cu.name() + ".ExecStage"),
+      computeUnit(cu),
+      fromSchedule(from_schedule),
       lastTimeInstExecuted(false),
-      thisTimeInstExecuted(false), instrExecuted (false),
-      executionResourcesUsed(0), _name(cu.name() + ".ExecStage"),
+      thisTimeInstExecuted(false),
+      instrExecuted(false),
+      executionResourcesUsed(0),
+      execWaves(this, "insts"),
       stats(&cu)
 
 {
@@ -174,6 +178,7 @@ ExecStage::exec()
                         gpu_dyn_inst->disassemble());
                 DPRINTF(GPUSched, "dispatchList[%d] EXREADY->EMPTY\n", unitId);
                 wf->exec();
+                execWaves++;
                 (computeUnit.scheduleStage).deleteFromSch(wf);
                 fromSchedule.dispatchTransition(unitId, EMPTY);
                 wf->freeResources();
