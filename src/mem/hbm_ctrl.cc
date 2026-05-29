@@ -263,6 +263,7 @@ HBMCtrl::recvTimingReq(PacketPtr pkt)
                 }
                 stats.writeReqs++;
                 stats.bytesWrittenSys += size;
+                perfettoSample();
             }
         } else {
             if (writeQueueFullPC1(pkt_count)) {
@@ -279,6 +280,7 @@ HBMCtrl::recvTimingReq(PacketPtr pkt)
                 }
                 stats.writeReqs++;
                 stats.bytesWrittenSys += size;
+                perfettoSample();
             }
         }
     } else {
@@ -303,6 +305,7 @@ HBMCtrl::recvTimingReq(PacketPtr pkt)
 
                 stats.readReqs++;
                 stats.bytesReadSys += size;
+                perfettoSample();
             }
         } else {
             if (readQueueFullPC1(pkt_count)) {
@@ -320,6 +323,7 @@ HBMCtrl::recvTimingReq(PacketPtr pkt)
                 }
                 stats.readReqs++;
                 stats.bytesReadSys += size;
+                perfettoSample();
             }
         }
     }
