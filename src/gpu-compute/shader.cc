@@ -541,6 +541,9 @@ Shader::notifyCuSleep() {
     if (!_activeCus) {
         stats.shaderActiveTicks += curTick() - _lastInactiveTick;
 
+        // Pause Perfetto on GPU kernel end
+        perfettoLogger.pause();
+
         if (kernelExitRequested) {
             kernelExitRequested = false;
             if (blitKernel) {
