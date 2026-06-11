@@ -36,6 +36,7 @@
 #include "base/compiler.hh"
 #include "debug/GPUSched.hh"
 #include "debug/GPUVRF.hh"
+#include "debug/MYEXEC.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/gpu_static_inst.hh"
 #include "gpu-compute/register_file_cache.hh"
@@ -335,6 +336,8 @@ ScheduleStage::addToSchList(int exeType, const GPUDynInstPtr &gpu_dyn_inst)
         DPRINTF(GPUSched, "schList[%d]: Added: SIMD[%d] WV[%d]: %d: %s\n",
                 exeType, wf->simdId, wf->wfDynId,
                 gpu_dyn_inst->seqNum(), gpu_dyn_inst->disassemble());
+        DPRINTF(MYEXEC, "Sch CU %d WF[%d][%d] seq %d %s\n", wf->computeUnit->cu_id, wf->simdId,
+                    wf->wfSlotId, gpu_dyn_inst->seqNum(), gpu_dyn_inst->disassemble());
         return true;
     } else {
         // Number of stall cycles due to RF access denied

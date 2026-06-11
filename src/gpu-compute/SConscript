@@ -102,6 +102,7 @@ DebugFlag('GPUVRFSched')
 DebugFlag('GPUWgLatency')
 DebugFlag('Predictor')
 DebugFlag('WavefrontStack')
+DebugFlag('MYEXEC')
 
 CompoundFlag('GPUALL', ['GPUCoalescer', 'GPUDisp', 'GPUExec', 'GPUFetch',
                         'GPUMem', 'GPUPort', 'GPUSched', 'GPUSRF', 'GPUSync',

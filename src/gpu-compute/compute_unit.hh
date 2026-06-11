@@ -1166,6 +1166,12 @@ class ComputeUnit : public ClockedObject
         // of instructions that have been executed on a SIMD between a WF
         // executing two successive instructions.
         statistics::VectorDistribution instInterleave;
+
+        statistics::Scalar tlbSent;
+        statistics::Scalar tlbStalls;
+        statistics::Distribution itlbDelay;
+        statistics::Distribution fetchDelay;
+        statistics::Distribution fetchInt;
     } stats;
 };
 

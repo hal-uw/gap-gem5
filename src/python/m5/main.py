@@ -289,6 +289,12 @@ def parse_options():
         help="Start debug output at TICK",
     )
     option(
+        "--no-default-enable",
+        action="store_false",
+        default=True,
+        help="enable trace on start",
+    )
+    option(
         "--debug-end",
         metavar="TICK",
         type="int",
@@ -603,7 +609,8 @@ def main():
         e = event.create(trace.enable, event.Event.Debug_Enable_Pri)
         event.mainq.schedule(e, options.debug_start)
     else:
-        trace.enable()
+        if options.no_default_enable:
+            trace.enable()
 
     if options.debug_end:
         _check_tracing()

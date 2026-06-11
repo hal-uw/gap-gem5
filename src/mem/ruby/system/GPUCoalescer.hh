@@ -106,6 +106,21 @@ class UncoalescedTable
     std::map<InstSeqNum, RubyRequestType> reqTypeMap;
 };
 
+class ReceivedTime : public Extension<Packet, ReceivedTime>
+{
+  public:
+    ReceivedTime() : Extension() {time = curTick();}
+    std::unique_ptr<ExtensionBase> clone() const override {
+        auto ext = std::make_unique<ReceivedTime>();
+        ext->time = time;
+        return ext;
+    }
+    Tick getTime() const { return time; }
+
+  private:
+    Tick time;
+};
+
 class CoalescedRequest
 {
   public:
@@ -115,7 +130,7 @@ class CoalescedRequest
     {}
     ~CoalescedRequest() {}
 
-    void insertPacket(PacketPtr pkt) { pkts.push_back(pkt); }
+    void insertPacket(PacketPtr pkt) { pkts.push_back(pkt);}
     void setSeqNum(uint64_t _seqNum) { seqNum = _seqNum; }
     void setIssueTime(Cycles _issueTime) { issueTime = _issueTime; }
     void setRubyType(RubyRequestType type) { rubyType = type; }
@@ -131,6 +146,7 @@ class CoalescedRequest
     Cycles issueTime;
     RubyRequestType rubyType;
     std::vector<PacketPtr> pkts;
+    std::vector<Tick> recevied_time;
 };
 
 // PendingWriteInst tracks the number of outstanding Ruby requests
@@ -533,6 +549,41 @@ class GPUCoalescer : public RubyPort
     // Private copy constructor and assignment operator
     GPUCoalescer(const GPUCoalescer& obj);
     GPUCoalescer& operator=(const GPUCoalescer& obj);
+
+  public:
+  struct GPUCoalescerStats : public statistics::Group
+  {
+      GPUCoalescerStats(statistics::Group *parent);
+
+      statistics::Scalar hitMaxOutstandingReqs;
+      statistics::Scalar incomingRequests;
+      statistics::Scalar coalescedRequests;
+      statistics::Scalar first_req_time;
+      statistics::Scalar last_req_time;
+      statistics::Scalar first_out_req_time;
+      statistics::Scalar last_out_req_time;
+      statistics::Scalar first_resp_time;
+      statistics::Scalar last_resp_time;
+      statistics::Distribution rd_latency;
+      statistics::Distribution incoming_req;
+      statistics::Distribution numHopDelays;
+      statistics::Distribution tcpToTccDelay;
+      statistics::Distribution tccToSdDelay;
+      statistics::Distribution sdToSdDelay;
+      statistics::Distribution sdToTccDelay;
+      statistics::Distribution tccToTcpDelay;
+      statistics::Distribution tccToTccDelay;
+      statistics::Distribution delay_in_coal;
+      statistics::Distribution inst_req_count;
+      statistics::Distribution inst_ruby_req_count;
+      statistics::Distribution inst_complete_time_first;
+
+  } stats;
+
+  bool recv_first_req, send_first_req;
+
+  std::map<uint64_t, std::array<uint64_t, 4>> inst_stat_me;
+
 };
 
 inline std::ostream&

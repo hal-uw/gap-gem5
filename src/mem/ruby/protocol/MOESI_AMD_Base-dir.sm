@@ -197,6 +197,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   void unset_tbe();
   void wakeUpAllBuffers();
   void wakeUpAllBuffers(Addr a);
+  void profileHopDelay(Addr a, int b, MachineID c);
   void wakeUpBuffers(Addr a);
   Cycles curCycle();
 
@@ -695,6 +696,18 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     } else {
       L3CacheMemory.profileDemandMiss();
     }
+  }
+
+  action(phdr_profileHopDelayReq, "phdr", desc="Profile delay to this machine") {
+    peek(requestNetwork_in, CPURequestMsg){
+      if (in_msg.Type == CoherenceRequestType:RdBlk) {
+        profileHopDelay(address, 2, in_msg.CURequestor);
+      }
+    }
+  }
+  
+  action(phds_profileHopDelayResp, "phds", desc="Profile delay to this machine") {
+    profileHopDelay(address, 3, tbe.CURequestor);
   }
 
   action(icd_probeInvCoreDataForDMA, "icd", desc="Probe inv cores, return data for DMA") {
@@ -1387,6 +1400,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   transition(U, {RdBlkS}, BS_PM) {L3TagArrayRead} {
     t_allocateTBE;
     l_queueMemRdReq;
+    phdr_profileHopDelayReq;
     pr_profileL3HitMiss; //Must come after l_queueMemRdReq
     sc_probeShrCoreData;
     p_popRequestQueue;
@@ -1412,6 +1426,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   transition(U, Atomic, BM_PM) {L3TagArrayRead, L3TagArrayWrite} {
     t_allocateTBE;
     l_queueMemRdReq;
+    phdr_profileHopDelayReq;
     pr_profileL3HitMiss; //Must come after l_queueMemRdReq
     dc_probeInvCoreData;
     p_popRequestQueue;
@@ -1420,6 +1435,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   transition(U, {RdBlkM}, BM_PM) {L3TagArrayRead} {
     t_allocateTBE;
     l_queueMemRdReq;
+    phdr_profileHopDelayReq;
     pr_profileL3HitMiss; //Must come after l_queueMemRdReq
     dc_probeInvCoreData;
     p_popRequestQueue;
@@ -1428,6 +1444,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   transition(U, RdBlk, B_PM) {L3TagArrayRead}{
     t_allocateTBE;
     l_queueMemRdReq;
+    phdr_profileHopDelayReq;
     pr_profileL3HitMiss; //Must come after l_queueMemRdReq
     sc_probeShrCoreData;
     p_popRequestQueue;
@@ -1560,6 +1577,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     mt_writeMemDataToTBE;
     wd_writeBackData;
     s_sendResponseS;
+    phds_profileHopDelayResp;
     alwt_allocateL3BlockOnWT;
     dt_deallocateTBE;
     pm_popMemQueue;
@@ -1578,6 +1596,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     mt_writeMemDataToTBE;
     wd_writeBackData;
     es_sendResponseES;
+    phds_profileHopDelayResp;
     alwt_allocateL3BlockOnWT;
     dt_deallocateTBE;
     pm_popMemQueue;
@@ -1586,6 +1605,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   transition(BS_M, L3Hit, B) {L3TagArrayWrite, L3DataArrayWrite} {
     wd_writeBackData;
     s_sendResponseS;
+    phds_profileHopDelayResp;
     alwt_allocateL3BlockOnWT;
     dt_deallocateTBE;
     ptl_popTriggerQueue;
@@ -1602,6 +1622,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   transition(B_M, L3Hit, B) {L3DataArrayWrite, L3TagArrayWrite} {
     wd_writeBackData;
     es_sendResponseES;
+    phds_profileHopDelayResp;
     alwt_allocateL3BlockOnWT;
     dt_deallocateTBE;
     ptl_popTriggerQueue;
@@ -1722,6 +1743,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     sf_setForwardReqTime;
     wd_writeBackData;
     s_sendResponseS;
+    phds_profileHopDelayResp;
     alwt_allocateL3BlockOnWT;
     dt_deallocateTBE;
     pt_popTriggerQueue;
@@ -1740,6 +1762,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     sf_setForwardReqTime;
     wd_writeBackData;
     es_sendResponseES;
+    phds_profileHopDelayResp;
     alwt_allocateL3BlockOnWT;
     dt_deallocateTBE;
     pt_popTriggerQueue;

@@ -40,6 +40,7 @@
 #include "debug/ProtocolTrace.hh"
 #include "debug/RubyPort.hh"
 #include "debug/RubyStats.hh"
+#include "debug/MYGPU.hh"
 #include "gpu-compute/shader.hh"
 #include "mem/packet.hh"
 #include "mem/ruby/common/DataBlock.hh"
@@ -210,7 +211,8 @@ GPUCoalescer::GPUCoalescer(const Params &p)
                  false, Event::Progress_Event_Pri),
       uncoalescedTable(this),
       deadlockCheckEvent([this]{ wakeup(); }, "GPUCoalescer deadlock check"),
-      gmTokenPort(name() + ".gmTokenPort")
+      gmTokenPort(name() + ".gmTokenPort"),
+      stats(this)
 {
     m_store_waiting_on_load_cycles = 0;
     m_store_waiting_on_store_cycles = 0;
@@ -563,6 +565,49 @@ GPUCoalescer::hitCallback(CoalescedRequest* crequest,
                       forwardRequestTime,
                       firstResponseTime,
                       success, isRegion);
+    Addr addr = request_line_address;
+    
+    assert(hop_timings_all.size() > m_controller->getMachineID().getNum());
+    auto &hop_timings = hop_timings_all[m_controller->getMachineID().getNum()];
+    if (hop_timings.count(addr)) {
+        auto& timeVec = hop_timings.at(addr);
+        int nonzero = 0;
+        for (const auto& timeVal : timeVec) {
+            nonzero = (timeVal > 0) ? nonzero + 1 : nonzero;
+        }
+        stats.numHopDelays.sample(nonzero);
+
+        // Only record GLC routes
+        if (nonzero == 4 && timeVec[0] > 0 && timeVec[1] > 0 && timeVec[5] > 0
+            && timeVec[4] > 0) {
+            // if (timeVec[1] >= timeVec[0]) {
+            //     stats.tcpToTccDelay.sample(timeVec[1] - timeVec[0]);
+            // }
+            // if (timeVec[2] >= timeVec[1]) {
+            //     stats.tccToSdDelay.sample(timeVec[2] - timeVec[1]);
+            // }
+            // if (timeVec[3] >= timeVec[2]) {
+            //     stats.sdToSdDelay.sample(timeVec[3] - timeVec[2]);
+            // }
+            // if (timeVec[4] >= timeVec[3]) {
+            //     stats.sdToTccDelay.sample(timeVec[4] - timeVec[3]);
+            // }
+            // if (timeVec[5] >= timeVec[4]) {
+            //     stats.tccToTcpDelay.sample(timeVec[5] - timeVec[4]);
+            // }
+            if (timeVec[1] >= timeVec[0]) {
+                stats.tcpToTccDelay.sample(timeVec[1] - timeVec[0]);
+            }
+            if (timeVec[4] >= timeVec[1]) {
+                stats.tccToTccDelay.sample(timeVec[4] - timeVec[1]);
+            }
+            if (timeVec[5] >= timeVec[4]) {
+                stats.tccToTcpDelay.sample(timeVec[5] - timeVec[4]);
+            }
+        }
+
+        hop_timings.erase(addr);
+    }
     // update the data
     //
     // MUST ADD DOING THIS FOR EACH REQUEST IN COALESCER
@@ -627,7 +672,14 @@ GPUCoalescer::hitCallback(CoalescedRequest* crequest,
 
     m_outstanding_count--;
     assert(m_outstanding_count >= 0);
-
+    if (inst_stat_me.count(crequest->getSeqNum()) != 0) {
+        inst_stat_me[crequest->getSeqNum()][3] = curTick();
+        stats.inst_req_count.sample(inst_stat_me[crequest->getSeqNum()][1]);
+        stats.inst_ruby_req_count.sample(inst_stat_me[crequest->getSeqNum()][2]);
+        stats.inst_complete_time_first.sample(inst_stat_me[crequest->getSeqNum()][3] - inst_stat_me[crequest->getSeqNum()][0]);
+        inst_stat_me.erase(crequest->getSeqNum());
+    }
+    DPRINTF(MYGPU, "HIT %d %X %d %s %X\n", crequest->getSeqNum(), request_address, 0, RubyRequestType_to_string(type), pkt->req->getPC());
     completeHitCallback(pktList);
 }
 
@@ -669,6 +721,13 @@ GPUCoalescer::getRequestType(PacketPtr pkt)
 RequestStatus
 GPUCoalescer::makeRequest(PacketPtr pkt)
 {
+    stats.incomingRequests++;
+    if (!recv_first_req) {
+        stats.first_req_time = curCycle();
+        recv_first_req = true;
+    }
+    stats.last_req_time = curCycle();
+    stats.incoming_req.sample(stats.last_req_time.value() - stats.first_req_time.value());
     // all packets must have valid instruction sequence numbers
     assert(pkt->req->hasInstSeqNum());
 
@@ -681,6 +740,13 @@ GPUCoalescer::makeRequest(PacketPtr pkt)
         assert(pkt->isRead() || pkt->isWrite() || pkt->isFlush());
 
         InstSeqNum seq_num = pkt->req->getReqInstSeqNum();
+        if (inst_stat_me.count(seq_num) == 0) {
+            inst_stat_me[seq_num] = {curTick(), 1, 0, 0};
+        }
+        else {
+            inst_stat_me[seq_num][1]++;
+        }
+        DPRINTF(MYGPU, "NR %d %X %d %s %X\n", seq_num, pkt->getAddr(), pkt->getSize(), pkt->isRead() ? "LD" : "ST", pkt->req->getPC());
 
         // in the case of protocol tester, there is one packet per sequence
         // number. The number of packets during simulation depends on the
@@ -705,6 +771,8 @@ GPUCoalescer::makeRequest(PacketPtr pkt)
         // it's picked for coalescing process later in this cycle or in a
         // future cycle. Packets remaining is set to the number of excepted
         // requests from the instruction based on its exec_mask.
+        std::shared_ptr<ReceivedTime> recv_time(new ReceivedTime());
+        pkt->setExtension(recv_time);
         uncoalescedTable.insertPacket(pkt);
         uncoalescedTable.insertReqType(pkt, getRequestType(pkt));
         uncoalescedTable.initPacketsRemaining(seq_num, num_packets);
@@ -848,9 +916,105 @@ GPUCoalescer::coalescePacket(PacketPtr pkt)
 
         return true;
     }
-
+    stats.hitMaxOutstandingReqs++;
+    // CUID/per cu => gpuDynInst
+    DPRINTF(GPUCoalescer, "Cannot coalesce pkt with addr 0x%X because "
+            "max outstanding requests has been reached, %s\n",
+            line_addr, getDynInst(pkt)->disassemble());
     // The maximum number of outstanding requests have been issued.
     return false;
+}
+GPUCoalescer::GPUCoalescerStats::GPUCoalescerStats(statistics::Group *parent)
+    : statistics::Group(parent),
+      ADD_STAT(hitMaxOutstandingReqs,
+                            "Number of times the coalescer could not coalesce "
+                            "a packet because the maximum number of "
+                            "outstanding requests has been reached"),
+      ADD_STAT(incomingRequests,
+                            "Number of incoming packets to the coalescer"),
+      ADD_STAT(coalescedRequests,
+                            "Number of outgoing msg coalesced"),
+      ADD_STAT(first_req_time,
+                            "The cycle when the first request is received by "
+                            "the coalescer"),
+      ADD_STAT(last_req_time,
+                            "The cycle when the last request is received by "
+                            "the coalescer"),
+      ADD_STAT(first_out_req_time,
+                            "The cycle when the first request is issued by "
+                            "the coalescer"),
+      ADD_STAT(last_out_req_time,
+                            "The cycle when the last request is issued by "
+                            "the coalescer"),
+      ADD_STAT(rd_latency, "stats of coalesced read request latencies (cycles)"),
+      ADD_STAT(incoming_req, "stats of incoming request counts (cycles)"),
+      ADD_STAT(numHopDelays, "Number of hops for samples of hop delays."),
+      ADD_STAT(tcpToTccDelay, "Latency from TCP rdblk to TCC rd_requestData"
+         "(ticks)."),
+    //   ADD_STAT(tccToSdDelay, "TCC rd_requestData SD issue mem req"
+    //         "(ticks)."),
+    //   ADD_STAT(sdToSdDelay, "SD issue response"
+    //         "(ticks)."),
+    //   ADD_STAT(sdToTccDelay, "Dir issue response to TCC issue response to TCP"
+    //         " (ticks)."),
+    //   ADD_STAT(tccToTcpDelay, "TCC issuing to TCP bypass sendresponse to CU "
+    //         "(ticks)."),
+    //   ADD_STAT(tccToTccDelay, "0"),
+    //   ADD_STAT(delay_in_coal, "Delay in coalescer before issuing (ticks).")
+      ADD_STAT(inst_req_count, "Number of requests in the coalescer for an instruction"),
+      ADD_STAT(inst_ruby_req_count, "Number of Ruby requests sent for an instruction"),
+      ADD_STAT(inst_complete_time_first, "Time from first request received to getting first ruby response (ticks)")
+ {
+    numHopDelays
+        .init(0,6, 1)
+        .flags(statistics::pdf | statistics::oneline)
+        ;
+
+    tcpToTccDelay
+        .init(0, 510000, 1000)
+        .flags(statistics::pdf | statistics::oneline)
+        ;
+
+    tccToSdDelay
+        .init(0, 7000, 100)
+        .flags(statistics::pdf | statistics::oneline)
+        ;
+
+    sdToSdDelay
+        .init(0, 270000, 1000)
+        .flags(statistics::pdf | statistics::oneline)
+        ;
+
+    sdToTccDelay
+        .init(0, 1050000, 1000)
+        .flags(statistics::pdf | statistics::oneline)
+        ;
+
+    tccToTcpDelay
+        .init(0, 120000, 1000)
+        .flags(statistics::pdf | statistics::oneline)
+        ;
+
+    rd_latency.init(200, 2500, 50)
+        .flags(statistics::pdf | statistics::oneline);
+    
+    tccToTccDelay.init(117000, 120000, 100)
+        .flags(statistics::pdf | statistics::oneline);
+
+    incoming_req.init(700000000, 800000000, 1000)
+    .flags(statistics::pdf | statistics::oneline);
+
+    delay_in_coal.init(0, 100000, 1000)
+        .flags(statistics::pdf | statistics::oneline);
+    
+    inst_req_count.init(0, 100, 1)
+        .flags(statistics::pdf | statistics::oneline);
+    
+    inst_ruby_req_count.init(0, 100, 1)
+        .flags(statistics::pdf | statistics::oneline);
+    
+    inst_complete_time_first.init(0, 100000, 1000)
+        .flags(statistics::pdf | statistics::oneline);
 }
 
 void
@@ -1023,6 +1187,11 @@ GPUCoalescer::recordMissLatency(CoalescedRequest* crequest,
                                 Cycles firstResponseTime,
                                 bool success, bool isRegion)
 {
+    if (crequest->getRubyType() == RubyRequestType_LD) {
+        auto now = curCycle();
+        auto latency = now - initialRequestTime;
+        stats.rd_latency.sample(latency);
+    }
 }
 
 } // namespace ruby

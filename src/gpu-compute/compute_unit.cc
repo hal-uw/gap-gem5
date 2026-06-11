@@ -1242,19 +1242,21 @@ ComputeUnit::sendRequest(GPUDynInstPtr gpuDynInst, PortID index, PacketPtr pkt)
                     gpuDynInst->wfSlotId, tmp_vaddr);
 
             tlbPort[tlbPort_index].retries.push_back(pkt);
+            stats.tlbStalls++;
         } else if (!tlbPort[tlbPort_index].sendTimingReq(pkt)) {
             // Stall the data port;
             // No more packet will be issued till
             // ruby indicates resources are freed by
             // a recvReqRetry() call back on this port.
             tlbPort[tlbPort_index].stallPort();
-
+            stats.tlbStalls++;
             DPRINTF(GPUTLB, "CU%d: WF[%d][%d]: Translation for addr %#x "
                     "failed!\n", cu_id, gpuDynInst->simdId,
                     gpuDynInst->wfSlotId, tmp_vaddr);
 
             tlbPort[tlbPort_index].retries.push_back(pkt);
         } else {
+            stats.tlbSent++;
            DPRINTF(GPUTLB, "CU%d: WF[%d][%d]: Translation for addr %#x from "
                    "instruction %s sent!\n", cu_id, gpuDynInst->simdId,
                    gpuDynInst->wfSlotId, tmp_vaddr,
@@ -2435,7 +2437,12 @@ ComputeUnit::ComputeUnitStats::ComputeUnitStats(statistics::Group *parent,
       ADD_STAT(completedWGs, "number of completed workgroups"),
       ADD_STAT(headTailLatency, "ticks between first and last cache block "
                "arrival at coalescer"),
-      ADD_STAT(instInterleave, "Measure of instruction interleaving per SIMD")
+      ADD_STAT(instInterleave, "Measure of instruction interleaving per SIMD"),
+      ADD_STAT(tlbSent, "Number of TLB translations sent from this CU"),
+      ADD_STAT(tlbStalls, "Number of times the CU TLB trans stalled."),
+      ADD_STAT(itlbDelay, "Dist of fetch delay"),
+      ADD_STAT(fetchDelay, "Dist of fetch delay"),
+      ADD_STAT(fetchInt, "Interval of initiatefetch")
 {
     ComputeUnit *cu = static_cast<ComputeUnit*>(parent);
 
@@ -2503,6 +2510,12 @@ ComputeUnit::ComputeUnitStats::ComputeUnitStats(statistics::Group *parent,
 
     numALUInstsExecuted = numInstrExecuted - dynamicGMemInstrCnt -
         dynamicLMemInstrCnt;
+    itlbDelay.init(0, 100000-1, 1000).flags(statistics::pdf |
+        statistics::oneline);
+    fetchDelay.init(0, 100000-1, 1000).flags(statistics::pdf |
+        statistics::oneline);
+    fetchInt.init(0, 1000000-1, 10000).flags(statistics::pdf |
+        statistics::oneline);
 }
 
 } // namespace gem5

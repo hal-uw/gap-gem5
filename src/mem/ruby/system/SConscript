@@ -40,6 +40,8 @@
 
 Import('*')
 
+DebugFlag("MYGPU")
+
 if not env['CONF']['RUBY']:
     Return()
 

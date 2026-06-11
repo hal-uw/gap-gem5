@@ -139,6 +139,7 @@ machine(MachineType:TCC, "TCC Cache")
   void set_tbe(TBE b);
   void unset_tbe();
   void wakeUpAllBuffers();
+  void profileHopDelay(Addr a, int b, MachineID c);
   void wakeUpBuffers(Addr a);
   void wakeUpAllBuffers(Addr a);
 
@@ -443,6 +444,7 @@ machine(MachineType:TCC, "TCC Cache")
 
   action(sd_sendData, "sd", desc="send Shared response") {
     peek(coreRequestNetwork_in, CPURequestMsg) {
+      profileHopDelay(address, 4, in_msg.Requestor);
       enqueue(responseToCore_out, ResponseMsg, l2_response_latency) {
         out_msg.addr := address;
         out_msg.Type := CoherenceResponseType:TDSysResp;
@@ -469,6 +471,7 @@ machine(MachineType:TCC, "TCC Cache")
       out_msg.Dirty := false;
       out_msg.State := CoherenceState:Shared;
       peek(responseFromNB_in, ResponseMsg) {
+        profileHopDelay(address, 4, in_msg.CURequestor);
         // if line state is Invalid, then we must be doing the transition(I, Data)
         // so use the DataBlk from the incoming message
         if ((getAccessPermission(address) == AccessPermission:NotPresent) ||
@@ -501,6 +504,7 @@ machine(MachineType:TCC, "TCC Cache")
 
   action(rb_bypassDone, "rb", desc="bypass L2 of read access") {
     peek(responseFromNB_in, ResponseMsg) {
+        profileHopDelay(address, 4, in_msg.CURequestor);
         enqueue(responseToCore_out, ResponseMsg, l2_response_latency) {
           out_msg.addr := address;
           out_msg.Type := CoherenceResponseType:TDSysResp;
@@ -868,6 +872,12 @@ machine(MachineType:TCC, "TCC Cache")
     wakeUpAllBuffers(address);
   }
 
+  action(phdr_profileHopDelayReq, "phdr", desc="Profile delay to this machine") {
+    peek(coreRequestNetwork_in, CPURequestMsg) {
+      profileHopDelay(address, 1, in_msg.Requestor);
+    }
+  }
+
   /*
     Currently z_stall is unused because it can lead to Protocol Stalls that
     eventually lead to deadlock.  Instead, it is recommended to use
@@ -989,6 +999,7 @@ machine(MachineType:TCC, "TCC Cache")
 
   transition({M, V}, RdBlk) {TagArrayRead, DataArrayRead} {
     p_profileHit;
+    phdr_profileHopDelayReq;
     sd_sendData;
     ut_updateTag;
     p_popRequestQueue;
@@ -1011,13 +1022,15 @@ machine(MachineType:TCC, "TCC Cache")
     p_profileMiss;
     t_allocateTBE;
     rd_requestData;
+    phdr_profileHopDelayReq;
     p_popRequestQueue;
   }
 
-  transition(IV, RdBlk) {
+  transition(IV, RdBlk) { //why?????
     p_profileMiss;
     t_allocateTBE;
     rd_requestData;
+    phdr_profileHopDelayReq
     p_popRequestQueue;
   }
 

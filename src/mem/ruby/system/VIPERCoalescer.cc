@@ -37,6 +37,7 @@
 #include "debug/GPUCoalescer.hh"
 #include "debug/MemoryAccess.hh"
 #include "debug/ProtocolTrace.hh"
+#include "debug/MYGPU.hh"
 #include "mem/packet.hh"
 #include "mem/ruby/common/SubBlock.hh"
 #include "mem/ruby/network/MessageBuffer.hh"
@@ -191,6 +192,19 @@ VIPERCoalescer::issueRequest(CoalescedRequest* crequest)
     Tick latency = cyclesToTicks(
         m_controller->mandatoryQueueLatency(crequest->getRubyType()));
     m_mandatory_q_ptr->enqueue(msg, clockEdge(), latency);
+    inst_stat_me[crequest->getSeqNum()][2]++;
+    DPRINTF(MYGPU, "IS %d %X %d %s %X\n", crequest->getSeqNum(), msg->getPhysicalAddress(), 0, RubyRequestType_to_string(crequest->getRubyType()), pc);
+    for (auto pkt : crequest->getPackets()) {
+        auto recv_time = pkt->getExtension<ReceivedTime>();
+        assert(recv_time && recv_time->getTime() > 0 && recv_time->getTime() <= curTick());
+        stats.delay_in_coal.sample(curTick() - recv_time->getTime());
+    }
+    stats.coalescedRequests++;
+    if (!send_first_req) {
+        stats.first_out_req_time = curCycle();
+        send_first_req = true;
+    }
+    stats.last_out_req_time = curCycle();
 }
 
 void

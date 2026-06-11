@@ -368,6 +368,14 @@ class Sequencer : public RubyPort
      * This is independent of this Sequencer object's version id.
      */
     void llscClearLocalMonitor();
+
+    public:
+    struct GPUSequencerStats : public statistics::Group
+    {
+          GPUSequencerStats(statistics::Group *parent);
+          statistics::Scalar hitMaxOutstandingReqs;
+          statistics::Scalar incomingRequests;
+      } stats;
 };
 
 inline std::ostream&

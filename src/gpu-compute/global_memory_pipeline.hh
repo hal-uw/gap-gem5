@@ -138,6 +138,7 @@ class GlobalMemPipeline
      *        completed
      */
     std::map<uint64_t, std::pair<GPUDynInstPtr, bool>> gmOrderedRespBuffer;
+    std::map<uint64_t, std::pair<Tick, Tick>> request_timestamps;
 
     // Global Memory Request FIFO: all global memory requests
     // are issued to this FIFO from the memory pipelines
@@ -152,6 +153,14 @@ class GlobalMemPipeline
         // target of a load instruction (or the load component of an atomic)
         // The delay is due to VRF bank conflicts
         statistics::Scalar loadVrfBankConflictCycles;
+        statistics::Scalar total_req_count;
+        statistics::Scalar average_queue_size;
+        statistics::Scalar max_req_queue_size;
+        statistics::Scalar resp_stalled_by_latency;
+        statistics::Scalar resp_stalled_by_bus;
+        statistics::Scalar resp_stalled_by_vrf;
+        statistics::Scalar resp_stalled_by_vector_global_mem_unit;
+        statistics::Distribution request_response_time;
     } stats;
 };
 

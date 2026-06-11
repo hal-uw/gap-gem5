@@ -119,6 +119,7 @@ class ExecStage
         // issued no instructions targeting a specific
         // execution resource type
         statistics::Vector numCyclesWithNoInstrTypeIssued;
+        statistics::Scalar issuedWaitcnt;
     } stats;
 };
 

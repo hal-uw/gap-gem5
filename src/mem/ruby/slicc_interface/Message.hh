@@ -130,6 +130,9 @@ class Message
     // Variables for required network traversal
     int incoming_link;
     int vnet;
+
+  public:
+    void *tracking_payload;
 };
 
 inline bool

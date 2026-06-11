@@ -35,6 +35,7 @@
 
 #include "base/trace.hh"
 #include "debug/GPUSched.hh"
+#include "debug/MYEXEC.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/vector_register_file.hh"
 #include "gpu-compute/wavefront.hh"
@@ -173,7 +174,11 @@ ExecStage::exec()
                         unitId, wf->simdId, wf->wfDynId,
                         gpu_dyn_inst->disassemble());
                 DPRINTF(GPUSched, "dispatchList[%d] EXREADY->EMPTY\n", unitId);
+                if (gpu_dyn_inst->isWaitcnt())
+                    stats.issuedWaitcnt++;
                 wf->exec();
+                DPRINTF(MYEXEC, "Exec CU %d WF[%d][%d] seq %d %s\n", wf->computeUnit->cu_id, wf->simdId,
+                    wf->wfSlotId, gpu_dyn_inst->seqNum(), gpu_dyn_inst->disassemble());
                 (computeUnit.scheduleStage).deleteFromSch(wf);
                 fromSchedule.dispatchTransition(unitId, EMPTY);
                 wf->freeResources();
@@ -211,7 +216,8 @@ ExecStage::ExecStageStats::ExecStageStats(statistics::Group *parent)
       ADD_STAT(numCyclesWithInstrTypeIssued, "Number of cycles at least one "
                "instruction issued to execution resource type"),
       ADD_STAT(numCyclesWithNoInstrTypeIssued, "Number of clks no instructions"
-               " issued to execution resource type")
+               " issued to execution resource type"),
+      ADD_STAT(issuedWaitcnt, "num of s_waitcnt issued")
 {
     ComputeUnit *compute_unit = static_cast<ComputeUnit*>(parent);
 

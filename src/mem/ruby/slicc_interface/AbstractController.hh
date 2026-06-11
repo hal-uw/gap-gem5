@@ -69,6 +69,8 @@ namespace gem5
 namespace ruby
 {
 
+inline std::vector<std::unordered_map<Addr, std::vector<Tick>>> hop_timings_all(60);
+
 class Network;
 class GPUCoalescer;
 class DMASequencer;
@@ -193,6 +195,47 @@ class AbstractController : public ClockedObject, public Consumer
             if (range.contains(addr)) return true;
         return false;
     }
+
+    void profileHopDelay(Addr addr, uint8_t hop_num, const MachineID &m, const MachineID &src_m) {
+        profileHopDelay(addr, hop_num, m, &src_m);
+    }
+
+    void profileHopDelay(Addr addr, uint8_t hop_num, const MachineID &m, const MachineID *src_m = nullptr)
+    {
+        if (m.getType() != MachineType_TCP) return;
+
+        if (hop_num == 5) {
+            assert(src_m);
+            if (src_m->getType() != MachineType_TCC) {
+                warn("Expected source machine type to be TCC for hop_num 5, but got %s\n",
+                     MachineType_to_string(src_m->getType()));
+            }
+            assert(src_m->getType() == MachineType_TCC);
+        }
+        if (hop_timings_all.size() <= m.getNum()) {
+            hop_timings_all.resize(m.getNum() + 1);
+        }
+
+        auto &hop_timings = hop_timings_all[m.getNum()];
+
+        if (hop_timings.count(addr) == 0) {
+            //start by treating as shared, and resize later if needed.
+            hop_timings[addr] = std::vector<Tick>(6, Tick(0));
+        }
+
+        if (hop_timings[addr].size() <= hop_num) {
+            hop_timings[addr].resize(hop_num + 1);
+        }
+
+        if (hop_timings[addr][hop_num] == Tick(0)) {
+            hop_timings[addr][hop_num] = curTick();
+        }
+        if (hop_num == 5) {
+          assert(hop_timings[addr][4] > 0);
+          assert(hop_timings[addr][5] >= hop_timings[addr][4]);
+        }
+    }
+
 
     /**
      * Map an address to the correct MachineID

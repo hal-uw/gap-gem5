@@ -105,6 +105,7 @@ class ScoreboardCheckStage
         ScoreboardCheckStageStats(statistics::Group *parent);
 
         statistics::Vector stallCycles;
+        statistics::Scalar ctr1;
     } stats;
 };
 

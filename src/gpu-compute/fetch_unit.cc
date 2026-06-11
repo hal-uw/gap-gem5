@@ -37,6 +37,7 @@
 #include "debug/GPUFetch.hh"
 #include "debug/GPUPort.hh"
 #include "debug/GPUTLB.hh"
+#include "debug/MYEXEC.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/gpu_dyn_inst.hh"
 #include "gpu-compute/gpu_static_inst.hh"
@@ -128,6 +129,8 @@ FetchUnit::exec()
         Wavefront *waveToBeFetched = fetchScheduler.chooseWave();
         waveToBeFetched->pendingFetch = true;
         fetchStatusQueue[waveToBeFetched->wfSlotId].second = false;
+        if (last_fetch != 0) computeUnit.stats.fetchInt.sample(curTick()-last_fetch);
+        last_fetch = curTick();
         initiateFetch(waveToBeFetched);
     }
 }
@@ -167,6 +170,8 @@ FetchUnit::initiateFetch(Wavefront *wavefront)
         computeUnit.requestorId(), 0, 0, nullptr);
 
     PacketPtr pkt = new Packet(req, MemCmd::ReadReq);
+    std::shared_ptr<ReceivedTime> recv_time(new ReceivedTime());
+    pkt->setExtension(recv_time);
 
     if (timingSim) {
         // SenderState needed on Return
@@ -243,6 +248,9 @@ FetchUnit::fetch(PacketPtr pkt, Wavefront *wavefront)
      * the new packet so we can set the size, addr, and proper flags.
      */
     PacketPtr oldPkt = pkt;
+    auto recv_time = pkt->getExtension<ReceivedTime>();
+    assert(recv_time && recv_time->getTime() > 0 && recv_time->getTime() <= curTick());
+    computeUnit.stats.itlbDelay.sample(curTick() - recv_time->getTime());
     pkt = new Packet(oldPkt->req, oldPkt->cmd);
     delete oldPkt;
 
@@ -277,6 +285,8 @@ FetchUnit::fetch(PacketPtr pkt, Wavefront *wavefront)
 
     // New SenderState for the memory access
     pkt->senderState = new ComputeUnit::SQCPort::SenderState(wavefront);
+    recv_time = std::shared_ptr<ReceivedTime> (new ReceivedTime());
+    pkt->setExtension(recv_time);
 
     if (timingSim) {
         // translation is done. Send the appropriate timing memory request.
@@ -320,6 +330,9 @@ FetchUnit::processFetchReturn(PacketPtr pkt)
         assert(!fetchBuf.at(wavefront->wfSlotId).hasFetchDataToProcess());
         wavefront->dropFetch = false;
     } else {
+        auto recv_time = pkt->getExtension<ReceivedTime>();
+        assert(recv_time && recv_time->getTime() > 0 && recv_time->getTime() <= curTick());
+        computeUnit.stats.fetchDelay.sample(curTick() - recv_time->getTime());
         fetchBuf.at(wavefront->wfSlotId).fetchDone(pkt);
     }
 
@@ -598,6 +611,9 @@ FetchUnit::FetchBufDesc::decodeInsts()
                                                wavefront->computeUnit->
                                                 getAndIncSeqNum());
             wavefront->instructionBuffer.push_back(gpu_dyn_inst);
+
+            DPRINTF(MYEXEC, "Decoded CU %d WF[%d][%d] seq %d %s\n", wavefront->computeUnit->cu_id, wavefront->simdId,
+                    wavefront->wfSlotId, gpu_dyn_inst->seqNum(), gpu_static_inst->disassemble());
 
             DPRINTF(GPUFetch, "WF[%d][%d]: Id%ld decoded %s (%d bytes). "
                     "%d bytes remain.\n", wavefront->simdId,

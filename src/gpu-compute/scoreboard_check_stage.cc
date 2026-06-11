@@ -34,6 +34,7 @@
 #include "debug/GPUExec.hh"
 #include "debug/GPUSched.hh"
 #include "debug/GPUSync.hh"
+#include "debug/MYEXEC.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/gpu_static_inst.hh"
 #include "gpu-compute/scalar_register_file.hh"
@@ -88,6 +89,7 @@ ScoreboardCheckStage::ready(Wavefront *w, nonrdytype_e *rdyStatus,
     // instruction should be blocked until waitCnts are satisfied.
     if (w->getStatus() == Wavefront::S_WAITCNT) {
         if (!w->waitCntsSatisfied()) {
+            stats.ctr1++;
             *rdyStatus = NRDY_WAIT_CNT;
             return false;
         }
@@ -272,6 +274,8 @@ ScoreboardCheckStage::exec()
                         curWave->nextInstr()->seqNum(),
                         curWave->nextInstr()->disassemble());
                 toSchedule.markWFReady(curWave, exeResType);
+                DPRINTF(MYEXEC, "Scoreboard CU %d WF[%d][%d] seq %d %s\n", curWave->computeUnit->cu_id, curWave->simdId,
+                    curWave->wfSlotId, curWave->nextInstr()->seqNum(), curWave->nextInstr()->disassemble());
             }
             collectStatistics(rdyStatus);
         }
@@ -281,7 +285,8 @@ ScoreboardCheckStage::exec()
 ScoreboardCheckStage::
 ScoreboardCheckStageStats::ScoreboardCheckStageStats(statistics::Group *parent)
     : statistics::Group(parent, "ScoreboardCheckStage"),
-      ADD_STAT(stallCycles, "number of cycles wave stalled in SCB")
+      ADD_STAT(stallCycles, "number of cycles wave stalled in SCB"),
+      ADD_STAT(ctr1, "counter for S_WAIT state")
 {
     stallCycles.init(NRDY_CONDITIONS);
 

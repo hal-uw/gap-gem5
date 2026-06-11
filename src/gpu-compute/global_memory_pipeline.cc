@@ -34,6 +34,7 @@
 #include "debug/GPUCoalescer.hh"
 #include "debug/GPUMem.hh"
 #include "debug/GPUReg.hh"
+#include "debug/MYEXEC.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/global_memory_pipeline.hh"
 #include "gpu-compute/gpu_dyn_inst.hh"
@@ -135,6 +136,8 @@ GlobalMemPipeline::exec()
         DPRINTF(GPUMem, "CU%d: WF[%d][%d]: Completing global mem instr %s\n",
                 m->cu_id, m->simdId, m->wfSlotId, m->disassemble());
         m->completeAcc(m);
+        DPRINTF(MYEXEC, "GlobalDone CU %d WF[%d][%d] seq %d %s\n", w->computeUnit->cu_id, w->simdId,
+                    w->wfSlotId, m->seqNum(), m->disassemble());
         if (m->isFlat()) {
             w->decLGKMInstsIssued();
         }
@@ -177,10 +180,31 @@ GlobalMemPipeline::exec()
         if (!computeUnit.shader->coissue_return)
             w->computeUnit->vectorGlobalMemUnit.set(m->time);
     }
+    else if (m){
+        // m && m->latency.rdy() && computeUnit.glbMemToVrfBus.rdy() &&
+        // accessVrf && (computeUnit.shader->coissue_return ||
+        // computeUnit.vectorGlobalMemUnit.rdy())
+        if (!m->latency.rdy()) {
+            stats.resp_stalled_by_latency++;
+        } else if (!computeUnit.glbMemToVrfBus.rdy()) {
+            stats.resp_stalled_by_bus++;
+        } else if (!accessVrf) {
+            stats.resp_stalled_by_vrf++;
+        } else if (!computeUnit.shader->coissue_return &&
+                   !computeUnit.vectorGlobalMemUnit.rdy()) {
+            stats.resp_stalled_by_vector_global_mem_unit++;
+        }
+    }
 
     // If pipeline has executed a global memory instruction
     // execute global memory packets and issue global
     // memory packets to DTLB
+
+    stats.total_req_count++;
+    stats.average_queue_size = ((stats.average_queue_size.value() * (stats.total_req_count.value() - 1)) +
+            gmIssuedRequests.size()) / stats.total_req_count.value();
+    stats.max_req_queue_size = std::max((size_t)stats.max_req_queue_size.value(),
+            (gmIssuedRequests.size()));
     if (!gmIssuedRequests.empty()) {
         GPUDynInstPtr mp = gmIssuedRequests.front();
         if (mp->isLoad() || mp->isAtomic()) {
@@ -217,6 +241,8 @@ GlobalMemPipeline::exec()
              */
             gmOrderedRespBuffer.insert(std::make_pair(mp->seqNum(),
                 std::make_pair(mp, false)));
+            request_timestamps.insert(std::make_pair(mp->seqNum(),
+                std::make_pair(curTick(), Tick(0))));
         }
 
         if (!mp->isMemSync() && !mp->isEndOfKernel() && mp->allLanesZero()) {
@@ -272,7 +298,10 @@ GlobalMemPipeline::completeRequest(GPUDynInstPtr gpuDynInst)
     assert(gmOrderedRespBuffer.begin()->second.second);
     // remove this instruction from the buffer by its
     // unique seq ID
+    auto timestamp_it = request_timestamps.find(gpuDynInst->seqNum());
+    stats.request_response_time.sample(timestamp_it->second.second - timestamp_it->second.first);
     gmOrderedRespBuffer.erase(gpuDynInst->seqNum());
+    request_timestamps.erase(gpuDynInst->seqNum());
 }
 
 void
@@ -310,14 +339,31 @@ GlobalMemPipeline::handleResponse(GPUDynInstPtr gpuDynInst)
     // buffer
     assert(mem_req != gmOrderedRespBuffer.end());
     mem_req->second.second = true;
+    auto timestamp_it = request_timestamps.find(gpuDynInst->seqNum());
+    assert(timestamp_it != request_timestamps.end());
+    timestamp_it->second.second = curTick();
 }
 
 GlobalMemPipeline::
 GlobalMemPipelineStats::GlobalMemPipelineStats(statistics::Group *parent)
     : statistics::Group(parent, "GlobalMemPipeline"),
       ADD_STAT(loadVrfBankConflictCycles, "total number of cycles GM data "
-               "are delayed before updating the VRF")
+               "are delayed before updating the VRF"),
+      ADD_STAT(total_req_count, "total number of calls to exec()"),
+      ADD_STAT(average_queue_size, "average size of the request queue"),
+      ADD_STAT(max_req_queue_size, "max size of the request queue"),
+      ADD_STAT(resp_stalled_by_latency, "number of times the response is "
+               "ready but stalled by latency"),
+      ADD_STAT(resp_stalled_by_bus, "number of times the response is ready but "
+               "stalled by bus"),
+      ADD_STAT(resp_stalled_by_vrf, "number of times the response is ready but "
+               "stalled by VRF access"),
+      ADD_STAT(resp_stalled_by_vector_global_mem_unit, "number of times the "
+               "response is ready but stalled by vector global mem unit"),
+      ADD_STAT(request_response_time, "distribution of response time for global "
+               "memory requests")
 {
+    request_response_time.init(0, 100000, 100);
 }
 
 } // namespace gem5

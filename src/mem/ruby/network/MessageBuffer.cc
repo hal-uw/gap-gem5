@@ -47,6 +47,7 @@
 #include "base/random.hh"
 #include "base/stl_helpers.hh"
 #include "debug/RubyQueue.hh"
+#include "debug/MYQUEUE.hh"
 #include "mem/ruby/system/RubySystem.hh"
 
 namespace gem5
@@ -293,6 +294,11 @@ MessageBuffer::enqueue(MsgPtr message, Tick current_time, Tick delta,
 
     DPRINTF(RubyQueue, "Enqueue arrival_time: %lld, Message: %s\n",
             arrival_time, *(message.get()));
+    
+    if (this->name().find("requestFromTCP") != std::string::npos) {
+        DPRINTF(MYQUEUE, "enqueued message with address %s\n",
+                *(message.get()));
+    }
 
     // Schedule the wakeup
     assert(m_consumer != NULL);

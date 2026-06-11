@@ -69,7 +69,8 @@ namespace ruby
 
 Sequencer::Sequencer(const Params &p)
     : RubyPort(p), m_IncompleteTimes(MachineType_NUM),
-      deadlockCheckEvent([this]{ wakeup(); }, "Sequencer deadlock check")
+      deadlockCheckEvent([this]{ wakeup(); }, "Sequencer deadlock check"),
+      stats(this)
 {
     m_outstanding_count = 0;
 
@@ -938,6 +939,7 @@ Sequencer::makeRequest(PacketPtr pkt)
         !pkt->req->isHTMAbort()) {
         return RequestStatus_BufferFull;
     }
+    stats.incomingRequests++;
 
     RubyRequestType primary_type = RubyRequestType_NULL;
     RubyRequestType secondary_type = RubyRequestType_NULL;
@@ -1205,6 +1207,17 @@ Sequencer::getCurrentUnaddressedTransactionID() const
         uint64_t(m_version & 0xFFFFFFFF) << 32) |
         (m_unaddressedTransactionCnt << RubySystem::getBlockSizeBits()
     );
+}
+
+Sequencer::GPUSequencerStats::GPUSequencerStats(statistics::Group *parent)
+    : statistics::Group(parent),
+    ADD_STAT(hitMaxOutstandingReqs,
+                            "Number of times the coalescer could not coalesce "
+                            "a packet because the maximum number of "
+                            "outstanding requests has been reached"),
+      ADD_STAT(incomingRequests,
+                            "Number of incoming packets to the coalescer")
+{
 }
 
 } // namespace ruby

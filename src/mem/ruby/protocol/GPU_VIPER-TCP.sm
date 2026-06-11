@@ -129,6 +129,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
   void set_tbe(TBE b);
   void unset_tbe();
   void wakeUpAllBuffers();
+  void profileHopDelay(Addr a, int b, MachineID c, MachineID d);
   void wakeUpBuffers(Addr a);
   void wakeUpAllBuffers(Addr a);
   Cycles curCycle();
@@ -499,6 +500,12 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
     unset_tbe();
   }
 
+  action(phds_profileHopDelayResp, "phds", desc="Profile delay to this machine") {
+    peek(responseToTCP_in, ResponseMsg) {
+      profileHopDelay(address, 5, machineID, in_msg.Sender);
+    }
+  }
+
   action(sf_setFlush, "sf", desc="set flush") {
     inFlush := true;
     APPEND_TRANSITION_COMMENT(" inFlush is true");
@@ -656,6 +663,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
 
   // added for profiling
   action(uu_profileDataMiss, "\udm", desc="Profile the demand miss"){
+    profileHopDelay(address, 0, machineID, machineID);
     L1cache.profileDemandMiss();
   }
 
@@ -776,6 +784,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
   // is in I (from the bypass request) or IV (from a subsequent non-bypassing
   // load), retain the current state and complete the bypassing request.
   transition({I, IV}, Bypass) {
+    phds_profileHopDelayResp;
     rb_bypassDone;
     pr_popResponseQueue;
   }

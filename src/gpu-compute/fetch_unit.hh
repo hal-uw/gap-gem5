@@ -67,6 +67,21 @@ class FetchUnit
     static uint32_t globalFetchUnitID;
 
   private:
+    Tick last_fetch;
+    class ReceivedTime : public Extension<Packet, ReceivedTime>
+    {
+    public:
+        ReceivedTime() : Extension() {time = curTick();}
+        std::unique_ptr<ExtensionBase> clone() const override {
+            auto ext = std::make_unique<ReceivedTime>();
+            ext->time = time;
+            return ext;
+        }
+        Tick getTime() const { return time; }
+
+    private:
+        Tick time;
+    };
     /**
      * fetch buffer descriptor. holds buffered
      * instruction data in the fetch unit.
