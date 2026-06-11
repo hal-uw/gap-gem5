@@ -45,14 +45,15 @@ namespace gem5
 /**
  * the default constructor that works with SWIG
  */
-LdsState::LdsState(const Params &params) :
-    ClockedObject(params),
-    tickEvent(this),
-    cuPort(name() + ".port", this),
-    maximumSize(params.size),
-    range(params.range),
-    bankConflictPenalty(params.bankConflictPenalty),
-    banks(params.banks)
+LdsState::LdsState(const Params &params)
+    : ClockedObject(params),
+      tickEvent(this),
+      cuPort(name() + ".port", this),
+      bytes_left(this, "Bytes Left"),
+      maximumSize(params.size),
+      range(params.range),
+      bankConflictPenalty(params.bankConflictPenalty),
+      banks(params.banks)
 {
     fatal_if(params.banks <= 0,
              "Number of LDS banks should be positive number");
@@ -60,8 +61,9 @@ LdsState::LdsState(const Params &params) :
              "Number of LDS banks should be a power of 2");
     fatal_if(params.size <= 0,
              "cannot allocate an LDS with a size less than 1");
-    fatal_if(params.size % 2,
-          "the LDS should be an even number");
+    fatal_if(params.size % 2, "the LDS should be an even number");
+
+    bytes_left = maximumSize;
 }
 
 /**

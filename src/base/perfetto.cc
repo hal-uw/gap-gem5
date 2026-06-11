@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 Advanced Micro Devices, Inc.
+ * Copyright (c) 2026 Advanced Micro Devices, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,64 +29,67 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __FETCH_STAGE_HH__
-#define __FETCH_STAGE_HH__
-
-#include <string>
-#include <vector>
-
 #include "base/perfetto.hh"
-#include "base/statistics.hh"
-#include "base/stats/group.hh"
-#include "gpu-compute/fetch_unit.hh"
+
+#include <sstream>
+
+#include "debug/Perfetto.hh"
+#include "sim/sim_exit.hh"
 
 namespace gem5
 {
 
-// Instruction fetch stage.
-// All dispatched wavefronts for all SIMDS are analyzed for the
-// need to fetch instructions. From the fetch eligible waves,
-// one wave is selected from each SIMD and fetch is initiated
-// for the selected waves.
+// Singleton instance of the PerfettoLogger
+PerfettoLogger perfettoLogger;
 
-class ComputeUnit;
-class Wavefront;
-
-class FetchStage : public Named
+void
+PerfettoLogger::init()
 {
-  public:
-    FetchStage(const ComputeUnitParams &p, ComputeUnit &cu);
-    ~FetchStage();
-    void init();
-    void exec();
-    void processFetchReturn(PacketPtr pkt);
-    void fetch(PacketPtr pkt, Wavefront *wave);
+    perfettoLog = simout.create("perfetto-log.gz");
 
-    FetchUnit &
-    fetchUnit(int simdId)
-    {
-        return _fetchUnit.at(simdId);
+    registerExitCallback([this]() { exitCallback(); });
+}
+
+void
+PerfettoLogger::exitCallback()
+{
+    simout.close(perfettoLog);
+}
+
+void
+PerfettoLogger::writePerfettoLog(const std::string &line,
+                                 const PerfettoAnnotation &annotations)
+{
+    if (!debug::Perfetto || !enabled) {
+        return;
     }
 
-  private:
-    int numVectorALUs;
-    ComputeUnit &computeUnit;
+    // Automatically initialize the logger if it hasn't been already. This
+    // allows users to use the logger without having to worry about what will
+    // call initialization.
+    if (!perfettoLog) {
+        init();
+    }
 
-    // List of fetch units. A fetch unit is
-    // instantiated per VALU/SIMD
-    std::vector<FetchUnit> _fetchUnit;
+    std::ostream *os(perfettoLog->stream());
+    os->write(line.c_str(), line.length());
 
-    PerfettoCounter fetchedInsts;
+    // This will be read in python using ast.literal_eval. This function will
+    // convert it to a python dict to pass to the perfetto tool. It is more
+    // forgiving that json parsers so things like the ending stray comma are
+    // not a problem.
+    std::stringstream fmt;
+    fmt << "{";
+    if (!annotations.empty()) {
+        for (const auto &[key, value] : annotations) {
+            fmt << "\"" << key << "\": \"" << value << "\", ";
+        }
+    }
+    fmt << "}";
 
-  protected:
-    struct FetchStageStats : public statistics::Group
-    {
-        FetchStageStats(statistics::Group *parent);
+    os->write(fmt.str().c_str(), fmt.str().length());
 
-        statistics::Distribution instFetchInstReturned;
-    } stats;
-};
+    os->write("\n", 1);
+}
 
 } // namespace gem5
-
-#endif // __FETCH_STAGE_HH__

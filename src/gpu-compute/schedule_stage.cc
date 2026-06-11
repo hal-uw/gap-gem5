@@ -50,12 +50,20 @@ namespace gem5
 ScheduleStage::ScheduleStage(const ComputeUnitParams &p, ComputeUnit &cu,
                              ScoreboardCheckToSchedule &from_scoreboard_check,
                              ScheduleToExecute &to_execute)
-    : computeUnit(cu), fromScoreboardCheck(from_scoreboard_check),
+    : Named(cu.name() + ".ScheduleStage"),
+      computeUnit(cu),
+      fromScoreboardCheck(from_scoreboard_check),
       toExecute(to_execute),
-      _name(cu.name() + ".ScheduleStage"),
-      vectorAluRdy(false), scalarAluRdy(false), scalarMemBusRdy(false),
-      scalarMemIssueRdy(false), glbMemBusRdy(false), glbMemIssueRdy(false),
-      locMemBusRdy(false), locMemIssueRdy(false), stats(&cu, cu.numExeUnits())
+      vectorAluRdy(false),
+      scalarAluRdy(false),
+      scalarMemBusRdy(false),
+      scalarMemIssueRdy(false),
+      glbMemBusRdy(false),
+      glbMemIssueRdy(false),
+      locMemBusRdy(false),
+      locMemIssueRdy(false),
+      scheduledCounter(this, "insts / cycle"),
+      stats(&cu, cu.numExeUnits())
 {
     for (int j = 0; j < cu.numExeUnits(); ++j) {
         scheduler.emplace_back(p);
@@ -332,6 +340,8 @@ ScheduleStage::addToSchList(int exeType, const GPUDynInstPtr &gpu_dyn_inst)
                 ->scheduleReadOperands(wf, gpu_dyn_inst);
         }
         computeUnit.srf[wf->simdId]->scheduleReadOperands(wf, gpu_dyn_inst);
+
+        scheduledCounter += 1;
 
         DPRINTF(GPUSched, "schList[%d]: Added: SIMD[%d] WV[%d]: %d: %s\n",
                 exeType, wf->simdId, wf->wfDynId,
