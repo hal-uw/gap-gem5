@@ -243,12 +243,29 @@ GlobalMemPipeline::exec()
 GPUDynInstPtr
 GlobalMemPipeline::getNextReadyResp()
 {
-    if (!gmOrderedRespBuffer.empty()) {
-        auto mem_req = gmOrderedRespBuffer.begin();
+    auto l_hash =  [](const std::pair<uint8_t, uint8_t>& p) -> std::size_t {
+        return (static_cast<uint16_t>(p.first) << 8) | p.second;
+    };
+    std::unordered_set<std::pair<uint8_t, uint8_t>, decltype(l_hash)>
+        wf_set(0, l_hash);
 
-        if (mem_req->second.second) {
-            return mem_req->second.first;
+    // Find one wavefront-level oldest completed request
+    if (!gmOrderedRespBuffer.empty()) {
+        for (auto it = gmOrderedRespBuffer.begin();
+            it != gmOrderedRespBuffer.end(); ++it) {
+            Wavefront *wf = it->second.first->wavefront();
+            std::pair<uint8_t, uint8_t> wf_id(wf->simdId, wf->wfSlotId);
+            // If the request is done and we haven't seen this wavefront yet,
+            // return it
+            if (it->second.second) {
+                if (wf_set.find(wf_id) == wf_set.end()) {
+                    return it->second.first;
+                }
+            }
+            else
+                wf_set.insert(wf_id);
         }
+
     }
 
     return nullptr;
@@ -267,9 +284,9 @@ GlobalMemPipeline::completeRequest(GPUDynInstPtr gpuDynInst)
 
     // we should only pop the oldest requst, and it
     // should be marked as done if we are here
-    assert(gmOrderedRespBuffer.begin()->first == gpuDynInst->seqNum());
-    assert(gmOrderedRespBuffer.begin()->second.first == gpuDynInst);
-    assert(gmOrderedRespBuffer.begin()->second.second);
+    // assert(gmOrderedRespBuffer.begin()->first == gpuDynInst->seqNum());
+    // assert(gmOrderedRespBuffer.begin()->second.first == gpuDynInst);
+    // assert(gmOrderedRespBuffer.begin()->second.second);
     // remove this instruction from the buffer by its
     // unique seq ID
     gmOrderedRespBuffer.erase(gpuDynInst->seqNum());
