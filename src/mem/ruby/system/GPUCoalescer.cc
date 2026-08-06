@@ -231,6 +231,7 @@ GPUCoalescer::GPUCoalescer(const Params &p)
     m_dataCache_ptr = p.dcache;
     m_max_outstanding_requests = p.max_outstanding_requests;
     m_deadlock_threshold = p.deadlock_threshold;
+    m_disable_deadlock_check = p.disable_deadlock_check;
 
     assert(m_max_outstanding_requests > 0);
     assert(m_deadlock_threshold > 0);
@@ -305,21 +306,29 @@ GPUCoalescer::getPort(const std::string &if_name, PortID idx)
 void
 GPUCoalescer::wakeup()
 {
-    Cycles current_time = curCycle();
-    for (auto& requestList : coalescedTable) {
-        for (auto& req : requestList.second) {
-            if (current_time - req->getIssueTime() > m_deadlock_threshold) {
-                std::stringstream ss;
-                printRequestTable(ss);
-                warn("GPUCoalescer %d Possible deadlock detected!\n%s\n",
-                     m_version, ss.str());
-                panic("Aborting due to deadlock!\n");
+    // The deadlock watchdog treats a request that stays outstanding longer
+    // than m_deadlock_threshold as a fatal deadlock. This can false-trigger
+    // when DRAM timings are intentionally stretched (slow-memory sensitivity
+    // experiments), so it can be turned off via the disable_deadlock_check
+    // parameter (--disable-watchdog).
+    if (!m_disable_deadlock_check) {
+        Cycles current_time = curCycle();
+        for (auto& requestList : coalescedTable) {
+            for (auto& req : requestList.second) {
+                if (current_time - req->getIssueTime()
+                        > m_deadlock_threshold) {
+                    std::stringstream ss;
+                    printRequestTable(ss);
+                    warn("GPUCoalescer %d Possible deadlock detected!\n%s\n",
+                         m_version, ss.str());
+                    panic("Aborting due to deadlock!\n");
+                }
             }
         }
-    }
 
-    Tick tick_threshold = cyclesToTicks(m_deadlock_threshold);
-    uncoalescedTable.checkDeadlock(tick_threshold);
+        Tick tick_threshold = cyclesToTicks(m_deadlock_threshold);
+        uncoalescedTable.checkDeadlock(tick_threshold);
+    }
 
     if (m_outstanding_count > 0) {
         schedule(deadlockCheckEvent,
