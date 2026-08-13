@@ -220,6 +220,18 @@ GPUDynInst::numDstScalarDWords()
     return _staticInst->numDstScalarDWords();
 }
 
+void
+GPUDynInst::numSrcScalarDWords(int numDWords)
+{
+    _staticInst->numSrcScalarDWords(numDWords);
+}
+
+void
+GPUDynInst::numDstScalarDWords(int numDWords)
+{
+    _staticInst->numDstScalarDWords(numDWords);
+}
+
 int
 GPUDynInst::maxOperandSize()
 {
