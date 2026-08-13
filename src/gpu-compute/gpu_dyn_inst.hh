@@ -188,6 +188,9 @@ class GPUDynInst : public GPUExecContext
     int numSrcScalarDWords();
     int numDstScalarDWords();
 
+    void numSrcScalarDWords(int numDWords);
+    void numDstScalarDWords(int numDwords);
+
     int maxOperandSize();
 
     int getNumOperands() const;
