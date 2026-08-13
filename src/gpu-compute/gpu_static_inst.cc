@@ -201,6 +201,18 @@ GPUStaticInst::numDstScalarDWords()
     return dstScalarDWords;
 }
 
+void
+GPUStaticInst::numSrcScalarDWords(int numDWords)
+{
+    srcScalarDWords = numDWords;
+}
+
+void
+GPUStaticInst::numDstScalarDWords(int numDWords)
+{
+    dstScalarDWords = numDWords;
+}
+
 int
 GPUStaticInst::maxOperandSize()
 {
