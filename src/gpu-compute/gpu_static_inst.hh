@@ -133,6 +133,10 @@ class GPUStaticInst : public GPUStaticInstFlags
     int numSrcScalarDWords();
     int numDstScalarDWords();
 
+    void numSrcScalarDWords(int numDWords);
+    void numDstScalarDWords(int numDwords);
+
+
     int maxOperandSize();
 
     virtual int
