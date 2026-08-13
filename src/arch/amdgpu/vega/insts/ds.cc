@@ -444,6 +444,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(1);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -512,6 +514,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(2);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -578,6 +582,8 @@ namespace VegaISA
                     gpuDynInst->d_data))[lane * 2 + 1] = data1[lane];
             }
         }
+
+        gpuDynInst->numDstScalarDWords(2);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -830,6 +836,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(1);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -892,6 +900,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(1);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -953,6 +963,8 @@ namespace VegaISA
                     = data[lane];
             }
         }
+
+        gpuDynInst->numDstScalarDWords(1);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -1488,6 +1500,8 @@ namespace VegaISA
 
         calcAddr(gpuDynInst, addr);
 
+        gpuDynInst->numSrcScalarDWords(1);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -1551,6 +1565,8 @@ namespace VegaISA
         addr.read();
 
         calcAddr(gpuDynInst, addr);
+
+        gpuDynInst->numSrcScalarDWords(2);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -1619,6 +1635,8 @@ namespace VegaISA
 
         calcAddr(gpuDynInst, addr);
 
+        gpuDynInst->numSrcScalarDWords(2);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -1685,6 +1703,8 @@ namespace VegaISA
 
         calcAddr(gpuDynInst, addr);
 
+        gpuDynInst->numSrcScalarDWords(1);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -1747,6 +1767,8 @@ namespace VegaISA
         addr.read();
 
         calcAddr(gpuDynInst, addr);
+
+        gpuDynInst->numSrcScalarDWords(1);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -1831,6 +1853,8 @@ namespace VegaISA
         addr.read();
 
         calcAddr(gpuDynInst, addr);
+
+        gpuDynInst->numSrcScalarDWords(1);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -2537,6 +2561,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(2);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -2605,6 +2631,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(4);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -2671,6 +2699,8 @@ namespace VegaISA
                     gpuDynInst->d_data))[lane * 2 + 1] = data1[lane];
             }
         }
+
+        gpuDynInst->numDstScalarDWords(4);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -3268,6 +3298,8 @@ namespace VegaISA
 
         calcAddr(gpuDynInst, addr);
 
+        gpuDynInst->numSrcScalarDWords(2);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -3331,6 +3363,8 @@ namespace VegaISA
         addr.read();
 
         calcAddr(gpuDynInst, addr);
+
+        gpuDynInst->numSrcScalarDWords(4);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -3398,6 +3432,8 @@ namespace VegaISA
         addr.read();
 
         calcAddr(gpuDynInst, addr);
+
+        gpuDynInst->numSrcScalarDWords(4);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -4436,6 +4472,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(3);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -4504,6 +4542,8 @@ namespace VegaISA
             }
         }
 
+        gpuDynInst->numDstScalarDWords(3);
+
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
 
@@ -4549,6 +4589,8 @@ namespace VegaISA
         addr.read();
 
         calcAddr(gpuDynInst, addr);
+
+        gpuDynInst->numSrcScalarDWords(3);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
@@ -4613,6 +4655,8 @@ namespace VegaISA
         addr.read();
 
         calcAddr(gpuDynInst, addr);
+
+        gpuDynInst->numSrcScalarDWords(4);
 
         gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
