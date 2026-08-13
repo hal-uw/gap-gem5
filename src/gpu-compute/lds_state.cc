@@ -114,6 +114,7 @@ LdsState::countBankConflicts(GPUDynInstPtr gpuDynInst,
     // number of bank conflicts
     int groups = (parent->wfSize() > numBanks) ?
         (parent->wfSize() / numBanks) : 1;
+
     for (int i = 0; i < groups; i++) {
         // Address Array holding all the work item addresses of an instruction
         std::vector<Addr> addr_array;
@@ -204,12 +205,17 @@ LdsState::processPacket(PacketPtr packet)
         (dynInst->isStore()) ? parent->storeBusLength() :
         parent->loadBusLength();
     // delay for accessing the LDS
+    busLength = (dynInst->isLoad()) ?
+         (busLength/4)*dynInst->numSrcScalarDWords() :
+         (dynInst->isStore()) ? (busLength/4)*dynInst->numDstScalarDWords() :
+         (busLength/4)*dynInst->numSrcScalarDWords();
     Tick processingTime =
         parent->cyclesToTicks(Cycles(bankConflicts * bankConflictPenalty)) +
         parent->cyclesToTicks(Cycles(busLength));
     // choose (delay + last packet in queue) or (now + delay) as the time to
     // return this
     Tick doneAt = earliestReturnTime() + processingTime;
+    //Tick doneAt = curTick() + processingTime;
     // then store it for processing
     return returnQueuePush(std::make_pair(doneAt, packet));
 }
