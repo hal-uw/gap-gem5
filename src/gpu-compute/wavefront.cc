@@ -1172,7 +1172,8 @@ Wavefront::exec()
         computeUnit->vrfToLocalMemPipeBus.set(computeUnit->
             cyclesToTicks(computeUnit->vrf_lm_bus_latency));
         computeUnit->vectorSharedMemUnit.
-            set(computeUnit->shader->cyclesToTicks(computeUnit->issuePeriod));
+            set(computeUnit->shader->
+                cyclesToTicks(computeUnit->ldsIssuePeriod));
         computeUnit->stats.instCyclesLdsPerSimd[simdId] +=
             computeUnit->vrf_lm_bus_latency;
     // LM or Flat as LM Store
@@ -1180,7 +1181,7 @@ Wavefront::exec()
         computeUnit->vrfToLocalMemPipeBus.set(computeUnit->
             cyclesToTicks(Cycles(2 * computeUnit->vrf_lm_bus_latency)));
         computeUnit->vectorSharedMemUnit.
-            set(computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+            set(computeUnit->cyclesToTicks(computeUnit->ldsIssuePeriod));
         computeUnit->stats.instCyclesLdsPerSimd[simdId] +=
             (2 * computeUnit->vrf_lm_bus_latency);
     // LM or Flat as LM, Atomic or MemFence
@@ -1189,7 +1190,7 @@ Wavefront::exec()
         computeUnit->vrfToLocalMemPipeBus.set(computeUnit->
             cyclesToTicks(Cycles(2 * computeUnit->vrf_lm_bus_latency)));
         computeUnit->vectorSharedMemUnit.
-            set(computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+            set(computeUnit->cyclesToTicks(computeUnit->ldsIssuePeriod));
         computeUnit->stats.instCyclesLdsPerSimd[simdId] +=
             (2 * computeUnit->vrf_lm_bus_latency);
     } else {

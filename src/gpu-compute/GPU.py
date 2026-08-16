@@ -164,7 +164,8 @@ class ComputeUnit(ClockedObject):
 
     scalar_pipe_length = Param.Int(1, "number of pipe stages per scalar ALU")
     issue_period = Param.Int(4, "number of cycles per issue period")
-    scalar_issue_period = Param.Int(1, "number of cycles per issue period")
+    scalar_issue_period = Param.Int(4, "number of cycles per issue period")
+    lds_issue_period = Param.Int(1, "number of cycles per issue period")
 
     vrf_gm_bus_latency = Param.Int(
         1, "number of cycles per use of VRF to GM bus"
