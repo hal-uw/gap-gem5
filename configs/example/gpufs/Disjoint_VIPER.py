@@ -50,6 +50,7 @@ class Disjoint_VIPER(RubySystem):
         super().__init__()
 
     def create(self, options, system, piobus, dma_devices):
+        self.clk_domain = system.fabric_clk
         # Disjoint network topology
         if "garnet" in options.network:
             self.network_cpu = DisjointGarnet(self)

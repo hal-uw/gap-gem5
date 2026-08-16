@@ -224,6 +224,13 @@ def makeGpuFSSystem(args):
     pm4_pkt_proc.pio = system.iobus.mem_side_ports
     system_hub.pio = system.iobus.mem_side_ports
 
+    system.fabric_clk = SrcClockDomain(
+        clock=args.fabric_clock, voltage_domain=system.voltage_domain
+    )
+    system.memory_clk = SrcClockDomain(
+        clock=args.memory_clock, voltage_domain=system.voltage_domain
+    )
+
     # Full system needs special TLBs for SQC, Scalar, and vector data ports
     args.full_system = True
     GPUTLBConfig.config_tlb_hierarchy(
@@ -236,9 +243,10 @@ def makeGpuFSSystem(args):
     system.ruby.create(args, system, system.iobus, system._dma_ports)
 
     # Create a seperate clock domain for Ruby
-    system.ruby.clk_domain = SrcClockDomain(
-        clock=args.ruby_clock, voltage_domain=system.voltage_domain
-    )
+    # system.ruby.clk_domain = SrcClockDomain(
+    #     clock=args.ruby_clock, voltage_domain=system.voltage_domain
+    # )
+    system.ruby.clk_domain = system.fabric_clk
 
     # If we are using KVM cpu, enable AVX. AVX is used in some ROCm libraries
     # such as rocBLAS which is used in higher level libraries like PyTorch.

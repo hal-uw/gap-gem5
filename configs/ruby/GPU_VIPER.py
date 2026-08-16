@@ -317,9 +317,11 @@ class TCCCntrl(TCC_Controller, CntrlBase):
         self.L2cache.resourceStalls = options.no_tcc_resource_stalls
 
         self.ruby_system = ruby_system
-        if hasattr(options, "gpu_clock") and hasattr(options, "gpu_voltage"):
+        if hasattr(options, "fabric_clock") and hasattr(
+            options, "gpu_voltage"
+        ):
             self.clk_domain = SrcClockDomain(
-                clock=options.gpu_clock,
+                clock=options.fabric_clock,
                 voltage_domain=VoltageDomain(voltage=options.gpu_voltage),
             )
 
@@ -552,6 +554,8 @@ def define_options(parser):
         help="Data access latency in L2 cache",
     )
     parser.add_argument("--simplemem-bw", type=str, default="32GiB/s")
+    parser.add_argument("--fabric-clock", type=str, default="1080MHz")
+    parser.add_argument("--memory-clock", type=str, default="1000MHz")
 
 
 def construct_dirs(options, system, ruby_system, network):
@@ -646,7 +650,11 @@ def construct_gpudirs(options, system, ruby_system, network):
             xorHighBit=xor_low_bit,
         )
 
-        dir_cntrl = DirCntrl(noTCCdir=True, TCC_select_num_bits=TCC_bits)
+        dir_cntrl = DirCntrl(
+            noTCCdir=True,
+            TCC_select_num_bits=TCC_bits,
+            clk_domain=system.fabric_clk,
+        )
         dir_cntrl.create(options, [addr_range], ruby_system, system)
         dir_cntrl.number_of_TBEs = options.num_tbes
         dir_cntrl.useL3OnWT = False
@@ -727,7 +735,9 @@ def construct_gpudirs(options, system, ruby_system, network):
         if issubclass(mem_type, DRAMInterface):
             if options.hbm_ctrl:
                 mem_ctrl = m5.objects.HBMCtrl(
-                    dram=dram_intf, dram_2=dram_intf_2
+                    dram=dram_intf,
+                    dram_2=dram_intf_2,
+                    clk_domain=system.memory_clk,
                 )
             else:
                 # mem_ctrl = m5.objects.MemCtrl(dram=dram_intf)
@@ -974,7 +984,10 @@ def construct_tccs(options, system, ruby_system, network):
     tcc_cntrl_nodes = []
 
     for i in range(options.num_tccs):
-        tcc_cntrl = TCCCntrl(l2_response_latency=options.TCC_latency)
+        tcc_cntrl = TCCCntrl(
+            l2_response_latency=options.TCC_latency,
+            clk_domain=system.fabric_clk,
+        )
         tcc_cntrl.create(options, ruby_system, system)
         tcc_cntrl.l2_request_latency = options.gpu_to_dir_latency
         tcc_cntrl.l2_response_latency = options.TCC_latency
