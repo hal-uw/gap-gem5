@@ -285,7 +285,7 @@ class TCC(RubyCache):
     def create(self, options):
         self.assoc = options.tcc_assoc
         self.atomicLatency = options.atomic_alu_latency
-        self.atomicALUs = options.tcc_num_atomic_alus
+        self.atomicALUs = options.tcc_num_atomic_alus // options.num_tccs
         if hasattr(options, "bw_scalor") and options.bw_scalor > 0:
             s = options.num_compute_units
             tcc_size = s * 128
