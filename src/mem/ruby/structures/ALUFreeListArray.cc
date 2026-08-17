@@ -57,34 +57,40 @@ namespace ruby
 *       - The same line has been accessed in the past accessLatency ticks
 */
 
-ALUFreeListArray::ALUFreeListArray(unsigned int num_ALUs, Tick access_latency)
+ALUFreeListArray::ALUFreeListArray(unsigned int num_ALUs, Tick access_latency,
+        RubySystem *rs)
+    : m_ruby_system(rs)
 {
     this->numALUs = num_ALUs;
     this->accessLatency = access_latency;
+
+    //busyALUs.resize(num_ALUs);
+    occupiedALUs = 0;
 }
 
 bool ALUFreeListArray::tryAccess(Addr addr)
 {
+    if (accessLatency == 0)
+        return true;
+
     uint32_t accesses_this_tick = 0;
 
-    // Remove requests from the tail of the queue that occured more than
-    // accessLatency ticks ago
-    Tick oldestValidRecordStart = curTick() - this->accessLatency;
-
-    while (accessQueue.size() > 0 &&
-         (accessQueue.back().startTick < oldestValidRecordStart)) {
-        accessQueue.pop_back();
+    while (accesses_this_tick < numALUs) {
+        if (busyALUs.size() > 0 &&
+            busyALUs.back().endTick < curTick()) {
+            busyALUs.pop_back();
+            occupiedALUs--;
+        } else {
+            break;
+        }
+        accesses_this_tick++;
     }
 
-    for (AccessRecord& record : accessQueue) {
-        // Block access if we would be using more ALUs than we have in a
-        // single tick
-        if (record.startTick == curTick() &&
-            (++accesses_this_tick > numALUs)) {
-            return false;
-        }
+    if (occupiedALUs >= numALUs) {
+        return false;
+    }
 
-        // Block access if the line is already being used
+    for (AccessRecord& record: busyALUs) {
         if (record.lineAddr == makeLineAddress(addr)) {
             return false;
         }
@@ -95,11 +101,17 @@ bool ALUFreeListArray::tryAccess(Addr addr)
 
 void ALUFreeListArray::reserve(Addr addr)
 {
+    if (accessLatency == 0)
+        return;
     // Only called after tryAccess, so we know queue is up to date and that
     // the access is valid
 
     // Add record to queue
-    accessQueue.push_front(AccessRecord(makeLineAddress(addr), curTick()));
+
+    busyALUs.push_front(AccessRecord(makeLineAddress(addr), curTick(),
+            curTick() + ((accessLatency - 1) * m_ruby_system->clockPeriod())));
+
+    occupiedALUs++;
 }
 
 } // namespace ruby

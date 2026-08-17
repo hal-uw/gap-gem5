@@ -73,8 +73,8 @@ CacheMemory::CacheMemory(const Params &p)
               p.start_index_bit, p.ruby_system),
     tagArray(p.tagArrayBanks, p.tagAccessLatency,
              p.start_index_bit, p.ruby_system),
-    atomicALUArray(p.atomicALUs, p.atomicLatency *
-             p.ruby_system->clockPeriod()),
+    atomicALUArray(p.atomicALUs, p.atomicLatency,
+             p.ruby_system),
     cacheMemoryStats(this)
 {
     m_cache_size = p.size;

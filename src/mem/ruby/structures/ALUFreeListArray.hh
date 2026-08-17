@@ -33,6 +33,7 @@
 #include <deque>
 
 #include "mem/ruby/common/TypeDefines.hh"
+#include "mem/ruby/system/RubySystem.hh"
 #include "sim/cur_tick.hh"
 
 namespace gem5
@@ -50,20 +51,24 @@ class ALUFreeListArray
     class AccessRecord
     {
       public:
-        AccessRecord(Addr line_addr, Tick start_tick) {
+        AccessRecord(Addr line_addr, Tick start_tick, Tick end_tick) {
           this->lineAddr = line_addr;
           this->startTick = start_tick;
+          this->endTick = end_tick;
         }
 
         Addr lineAddr;
         Tick startTick;
+        Tick endTick;
     };
 
     // Queue of accesses from past accessLatency cycles
-    std::deque<AccessRecord> accessQueue;
-
+    std::deque<AccessRecord> busyALUs;
+    unsigned int occupiedALUs;
+    RubySystem *m_ruby_system;
   public:
-    ALUFreeListArray(unsigned int num_ALUs, Tick access_latency);
+    ALUFreeListArray(unsigned int num_ALUs, Tick access_latency,
+            RubySystem *rs);
 
     bool tryAccess(Addr addr);
 
