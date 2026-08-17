@@ -34,6 +34,7 @@
 
 #include "base/intmath.hh"
 #include "mem/ruby/common/TypeDefines.hh"
+#include "mem/ruby/system/RubySystem.hh"
 #include "sim/cur_tick.hh"
 
 namespace gem5
@@ -46,28 +47,29 @@ class ALUFreeListArray
 {
   private:
     unsigned int numALUs;
-    Cycles accessClocks;
     Tick accessLatency = 0;
+    Tick clockPeriod = 0;
 
     class AccessRecord
     {
       public:
-        AccessRecord(Addr line_addr, Tick start_tick) {
+        AccessRecord(Addr line_addr, Tick start_tick, Tick end_tick) {
           this->lineAddr = line_addr;
           this->startTick = start_tick;
+          this->endTick = end_tick;
         }
 
         Addr lineAddr;
         Tick startTick;
+        Tick endTick;
     };
 
     // Queue of accesses from past accessLatency cycles
-    std::deque<AccessRecord> accessQueue;
-
     int m_block_size_bits = 0;
-
+    std::deque<AccessRecord> busyALUs;
+    unsigned int occupiedALUs;
   public:
-    ALUFreeListArray(unsigned int num_ALUs, Cycles access_clocks);
+    ALUFreeListArray(unsigned int num_ALUs, Tick access_latency);
 
     bool tryAccess(Addr addr);
 
@@ -81,9 +83,9 @@ class ALUFreeListArray
     }
 
     void
-    setClockPeriod(Tick clockPeriod)
+    setClockPeriod(Tick _clockPeriod)
     {
-        accessLatency = accessClocks * clockPeriod;
+        clockPeriod = _clockPeriod;
     }
 
     void
