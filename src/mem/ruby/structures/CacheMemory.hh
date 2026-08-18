@@ -120,6 +120,8 @@ class CacheMemory : public SimObject
 
     Cycles getTagLatency() const { return tagArray.getLatency(); }
     Cycles getDataLatency() const { return dataArray.getLatency(); }
+    Cycles getAtomicALULatency() const { return (Cycles)(atomicALUArray.getLatency() /
+      m_ruby_system->clockPeriod()); }
 
     bool isBlockInvalid(int64_t cache_set, int64_t loc);
     bool isBlockNotBusy(int64_t cache_set, int64_t loc);
@@ -196,6 +198,8 @@ class CacheMemory : public SimObject
     int m_start_index_bit;
     bool m_resource_stalls;
     int m_block_size;
+
+    RubySystem *m_ruby_system;
 
     /**
      * We store all the ReplacementData in a 2-dimensional array. By doing

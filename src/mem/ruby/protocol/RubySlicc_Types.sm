@@ -218,6 +218,7 @@ structure (CacheMemory, external = "yes") {
   bool isTagPresent(Addr);
   Cycles getTagLatency();
   Cycles getDataLatency();
+  Cycles getAtomicALULatency();
   void setMRU(Addr);
   void setMRU(Addr, int);
   void setMRU(AbstractCacheEntry);
