@@ -566,7 +566,7 @@ GPUCoalescer::hitCallback(CoalescedRequest* crequest,
                       firstResponseTime,
                       success, isRegion);
     Addr addr = request_line_address;
-    
+
     assert(hop_timings_all.size() > m_controller->getMachineID().getNum());
     auto &hop_timings = hop_timings_all[m_controller->getMachineID().getNum()];
     if (hop_timings.count(addr)) {
@@ -680,6 +680,11 @@ GPUCoalescer::hitCallback(CoalescedRequest* crequest,
         inst_stat_me.erase(crequest->getSeqNum());
     }
     DPRINTF(MYGPU, "HIT %d %X %d %s %X\n", crequest->getSeqNum(), request_address, 0, RubyRequestType_to_string(type), pkt->req->getPC());
+
+    auto trace = pkt->req->getExtension<GPUPktTrace>();
+    if (trace) {
+        trace->trace_info.push(std::make_pair(curTick(), "HIT at coalescer"));
+    }
     completeHitCallback(pktList);
 }
 
@@ -881,6 +886,10 @@ GPUCoalescer::coalescePacket(PacketPtr pkt)
         // be counted as outstanding requests.
         m_outstanding_count++;
 
+        if (m_outstanding_count > stats.max_outstanding_count.value()) {
+            stats.max_outstanding_count = m_outstanding_count;
+        }
+
         // We track all issued or to-be-issued Ruby requests associated with
         // write instructions. An instruction may have multiple Ruby
         // requests.
@@ -957,13 +966,14 @@ GPUCoalescer::GPUCoalescerStats::GPUCoalescerStats(statistics::Group *parent)
     //         "(ticks)."),
     //   ADD_STAT(sdToTccDelay, "Dir issue response to TCC issue response to TCP"
     //         " (ticks)."),
-    //   ADD_STAT(tccToTcpDelay, "TCC issuing to TCP bypass sendresponse to CU "
-    //         "(ticks)."),
-    //   ADD_STAT(tccToTccDelay, "0"),
+      ADD_STAT(tccToTcpDelay, "TCC issuing to TCP bypass sendresponse to CU "
+            "(ticks)."),
+      ADD_STAT(tccToTccDelay, "0"),
     //   ADD_STAT(delay_in_coal, "Delay in coalescer before issuing (ticks).")
       ADD_STAT(inst_req_count, "Number of requests in the coalescer for an instruction"),
       ADD_STAT(inst_ruby_req_count, "Number of Ruby requests sent for an instruction"),
-      ADD_STAT(inst_complete_time_first, "Time from first request received to getting first ruby response (ticks)")
+      ADD_STAT(inst_complete_time_first, "Time from first request received to getting first ruby response (ticks)"),
+      ADD_STAT(max_outstanding_count, "Maximum number of outstanding requests at any time")
  {
     numHopDelays
         .init(0,6, 1)
@@ -997,7 +1007,7 @@ GPUCoalescer::GPUCoalescerStats::GPUCoalescerStats(statistics::Group *parent)
 
     rd_latency.init(200, 2500, 50)
         .flags(statistics::pdf | statistics::oneline);
-    
+
     tccToTccDelay.init(117000, 120000, 100)
         .flags(statistics::pdf | statistics::oneline);
 
@@ -1006,13 +1016,13 @@ GPUCoalescer::GPUCoalescerStats::GPUCoalescerStats(statistics::Group *parent)
 
     delay_in_coal.init(0, 100000, 1000)
         .flags(statistics::pdf | statistics::oneline);
-    
+
     inst_req_count.init(0, 100, 1)
         .flags(statistics::pdf | statistics::oneline);
-    
+
     inst_ruby_req_count.init(0, 100, 1)
         .flags(statistics::pdf | statistics::oneline);
-    
+
     inst_complete_time_first.init(0, 100000, 1000)
         .flags(statistics::pdf | statistics::oneline);
 }

@@ -60,6 +60,10 @@ initMemReqHelper(GPUDynInstPtr gpuDynInst, MemCmd mem_req_type,
     PacketPtr pkt = nullptr, pkt1 = nullptr, pkt2 = nullptr;
 
     gpuDynInst->resetEntireStatusVector();
+    std::shared_ptr<GPUPktTrace> trace(new GPUPktTrace());
+    trace->setTraceInfo(gpuDynInst->cu_id, gpuDynInst->wfDynId,
+                            gpuDynInst->seqNum(), gpuDynInst->wfSlotId,
+                            gpuDynInst->simdId);
     for (int lane = 0; lane < VegaISA::NumVecElemPerVecReg; ++lane) {
         if (gpuDynInst->exec_mask[lane]) {
             vaddr = gpuDynInst->addr[lane];
@@ -95,6 +99,10 @@ initMemReqHelper(GPUDynInstPtr gpuDynInst, MemCmd mem_req_type,
                 req = std::make_shared<Request>(vaddr, req_size, 0,
                                   gpuDynInst->computeUnit()->requestorId(), 0,
                                   gpuDynInst->wfDynId);
+            }
+
+            if (gpuDynInst->disassemble().find("glc") != std::string::npos){
+                req->setExtension(trace);
             }
 
             if (misaligned_acc) {

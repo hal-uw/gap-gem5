@@ -36,6 +36,7 @@
 #include "arch/amdgpu/common/gpu_translation_state.hh"
 #include "arch/amdgpu/common/tlb.hh"
 #include "base/output.hh"
+#include "base/perfetto.hh"
 #include "debug/GPUDisp.hh"
 #include "debug/GPUExec.hh"
 #include "debug/GPUFetch.hh"
@@ -156,6 +157,14 @@ ComputeUnit::ComputeUnit(const Params &p) : ClockedObject(p),
     wfList.resize(numVectorALUs);
 
     wfBarrierSlots.resize(p.num_barrier_slots, WFBarrier());
+
+    is_traced = false;
+    for (auto i : p.traced_cu_list) {
+        if (i == cu_id) {
+            is_traced = true;
+            break;
+        }
+    }
 
     for (int i = 0; i < p.num_barrier_slots; ++i) {
         freeBarrierIds.insert(i);
@@ -1474,6 +1483,37 @@ ComputeUnit::DataPort::processMemRespEvent(PacketPtr pkt)
         }
 
         gpuDynInst->memStatusVector.clear();
+
+        auto trace = pkt->req->getExtension<GPUPktTrace>();
+        if (trace && !trace->trace_info.empty()) {
+            trace->trace_info.push(std::make_pair(curTick(), "Back at CU"));
+
+            if(computeUnit->is_traced) {
+                PerfettoAnnotation info;
+                info["s#"] = std::to_string(gpuDynInst->seqNum());
+                assert(gpuDynInst->seqNum() == trace->seq_num);
+                [[ maybe_unused ]] Tick last = 0;
+                while (!trace->trace_info.empty()) {
+                    auto t = trace->trace_info.top();
+                    trace->trace_info.pop();
+
+                    if (false && true) {//} || last != t.first) {
+                        std::string str = t.second;
+                        Tick tk = t.first;
+                        std::string track_name =
+                        "WF[" + std::to_string(trace->simd_id) + "][" + std::to_string(trace->wf_slot) + "]_Breakdown";
+                        perfettoLogger.writePerfettoLog(perfettoSlice(computeUnit->name()+"."+track_name, "", tk, tk, str), info);
+
+                        last = tk;
+                    }
+                }
+            }
+        }
+        else if (trace && trace->trace_info.empty() && computeUnit->is_traced) {
+            std::string track_name =
+                "WF[" + std::to_string(gpuDynInst->simdId) + "][" + std::to_string(gpuDynInst->wfSlotId) + "]_ResponseHint";
+            perfettoLogger.writePerfettoLog(perfettoSlice(computeUnit->name()+"."+track_name, "", curTick(), curTick(), "B"), {});
+        }
 
         gpuDynInst->
             profileRoundTripTime(curTick(), InstMemoryHop::GMEnqueue);

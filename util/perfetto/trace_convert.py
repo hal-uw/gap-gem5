@@ -6,7 +6,9 @@ import gzip
 import os
 import sys
 import uuid
+from collections import defaultdict
 
+import numpy as np
 from perfetto.protos.perfetto.trace.perfetto_trace_pb2 import (
     ProcessDescriptor,
     ThreadDescriptor,
@@ -75,6 +77,10 @@ def make_counter_track(
     return new_uuid
 
 
+info = defaultdict(dict)
+slice_dur = []
+
+
 def make_slice(
     builder: TraceProtoBuilder,
     track_uuid: int,
@@ -100,26 +106,37 @@ def make_slice(
         packet.track_event.track_uuid = track_uuid
         packet.track_event.name = text
         packet.trusted_packet_sequence_id = 1001
+    else:
+        packet = builder.add_packet()
+        packet.timestamp = start
+        packet.track_event.type = TrackEvent.TYPE_SLICE_BEGIN
+        packet.track_event.track_uuid = track_uuid
+        packet.track_event.name = text
+        packet.trusted_packet_sequence_id = 1001
 
-    packet = builder.add_packet()
-    packet.timestamp = start
-    packet.track_event.type = TrackEvent.TYPE_SLICE_BEGIN
-    packet.track_event.track_uuid = track_uuid
-    packet.track_event.name = text
-    packet.trusted_packet_sequence_id = 1001
+        packet = builder.add_packet()
+        packet.timestamp = finish
+        packet.track_event.type = TrackEvent.TYPE_SLICE_END
+        packet.track_event.track_uuid = track_uuid
+        packet.track_event.name = text
+        packet.trusted_packet_sequence_id = 1001
 
-    packet = builder.add_packet()
-    packet.timestamp = finish
-    packet.track_event.type = TrackEvent.TYPE_SLICE_END
-    packet.track_event.track_uuid = track_uuid
-    packet.track_event.name = text
-    packet.trusted_packet_sequence_id = 1001
+        if "global_load" in text:
+            slice_dur.append(finish - start)
 
     if annotations is not None:
+        if "s#" in annotations:
+            value = annotations["s#"]
+            if "Issue request to memory system" in text:
+                info[value]["is"] = start
+            elif "Back at CU" in text:
+                info[value]["cu"] = start
+            elif "glc" in text:
+                info[value]["st"] = start
+                info[value]["ed"] = finish
         for key, value in annotations.items():
             annotation = packet.track_event.debug_annotations.add()
             annotation.name = key
-
             # Set the appropriate value field based on type
             if isinstance(value, bool):
                 annotation.bool_value = value
@@ -305,3 +322,11 @@ if __name__ == "__main__":
 
     with open(args.output, "wb") as f:
         f.write(builder.serialize())
+    # assert(all(["is" in item and "cu" in item and "st" in item and "ed" in item and item["is"] >= item["st"] and item["is"] < item["cu"] and item["cu"] <= item["ed"] for item in info.values()]))
+    # dur_mem = [values["cu"] - values["is"] for values in info.values()]
+    # dur_cu = [values["ed"] - values["cu"] for values in info.values()]
+    # dur_tot = [values["ed"] - values["st"] for values in info.values()]
+    # print("mean duration in mem", sum(dur_mem) / len(dur_mem), np.std(np.array(dur_mem)))
+    # print("mean duration in cu", sum(dur_cu) / len(dur_cu), np.std(np.array(dur_cu)))
+    # print("mean total duration", sum(dur_tot) / len(dur_tot), np.std(np.array(dur_tot)))
+    # print(np.mean(slice_dur))

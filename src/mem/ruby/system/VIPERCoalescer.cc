@@ -199,6 +199,12 @@ VIPERCoalescer::issueRequest(CoalescedRequest* crequest)
         assert(recv_time && recv_time->getTime() > 0 && recv_time->getTime() <= curTick());
         stats.delay_in_coal.sample(curTick() - recv_time->getTime());
     }
+
+    auto trace = pkt->req->getExtension<GPUPktTrace>();
+    if (trace) {
+        trace->trace_info.push(std::make_pair(curTick(), "Issue request to memory system"));
+    }
+
     stats.coalescedRequests++;
     if (!send_first_req) {
         stats.first_out_req_time = curCycle();

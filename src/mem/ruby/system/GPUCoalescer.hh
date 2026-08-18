@@ -577,6 +577,7 @@ class GPUCoalescer : public RubyPort
       statistics::Distribution inst_req_count;
       statistics::Distribution inst_ruby_req_count;
       statistics::Distribution inst_complete_time_first;
+      statistics::Scalar max_outstanding_count;
 
   } stats;
 

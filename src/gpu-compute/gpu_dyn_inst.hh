@@ -482,6 +482,9 @@ class GPUDynInst : public GPUExecContext
     bool isSystemReq() { return systemReq; }
     void setSystemReq() { systemReq = true; }
 
+    Tick _exec_time;
+    Tick _resp_time;
+
   private:
     GPUStaticInst *_staticInst;
     const InstSeqNum _seqNum;

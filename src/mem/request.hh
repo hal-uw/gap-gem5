@@ -55,6 +55,7 @@
 #include <limits>
 #include <memory>
 #include <vector>
+#include <queue>
 
 #include "base/amo.hh"
 #include "base/compiler.hh"
@@ -93,6 +94,40 @@ class ThreadContext;
 
 typedef std::shared_ptr<Request> RequestPtr;
 typedef uint16_t RequestorID;
+
+class GPUPktTrace : public Extension<Packet, GPUPktTrace>
+{
+  public:
+    GPUPktTrace() : Extension() {
+    }
+    std::unique_ptr<ExtensionBase> clone() const override {
+        auto ext = std::make_unique<GPUPktTrace>();
+        ext->cu_id = cu_id;
+        ext->wf_dyn = wf_dyn;
+        ext->seq_num = seq_num;
+        ext->wf_slot = wf_slot;
+        ext->simd_id = simd_id;
+        ext->trace_info = trace_info;
+        return ext;
+    }
+
+    void setTraceInfo(uint8_t cu_id, uint64_t wf_dyn, uint64_t seq_num,
+                     uint8_t wf_slot, uint8_t simd_id) {
+        this->cu_id = cu_id;
+        this->wf_dyn = wf_dyn;
+        this->seq_num = seq_num;
+        this->wf_slot = wf_slot;
+        this->simd_id = simd_id;
+    }
+
+  public:
+    uint8_t cu_id;
+    uint64_t wf_dyn;
+    uint64_t seq_num;
+    uint8_t wf_slot;
+    uint8_t simd_id;
+    std::priority_queue< std::pair<Tick, std::string> > trace_info;
+};
 
 class Request : public Extensible<Request>
 {

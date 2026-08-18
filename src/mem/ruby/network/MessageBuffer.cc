@@ -49,6 +49,7 @@
 #include "debug/RubyQueue.hh"
 #include "debug/MYQUEUE.hh"
 #include "mem/ruby/system/RubySystem.hh"
+#include "mem/ruby/slicc_interface/RubyRequest.hh"
 
 namespace gem5
 {
@@ -307,16 +308,25 @@ MessageBuffer::enqueue(MsgPtr message, Tick current_time, Tick delta,
 
     DPRINTF(RubyQueue, "Enqueue arrival_time: %lld, Message: %s\n",
             arrival_time, *(message.get()));
-    
-    if (this->name().find("requestFromTCP") != std::string::npos) {
-        DPRINTF(MYQUEUE, "enqueued message with address %s\n",
-                *(message.get()));
-    }
+
+    // if (this->name().find("requestFromTCP") != std::string::npos) {
+    //     DPRINTF(MYQUEUE, "enqueued message with address %s\n",
+    //             *(message.get()));
+    // }
 
     // Schedule the wakeup
     assert(m_consumer != NULL);
     m_consumer->scheduleEventAbsolute(arrival_time);
     m_consumer->storeEventInfo(m_vnet_id);
+
+    // std::shared_ptr<RubyRequest> msg = std::dynamic_pointer_cast<RubyRequest>(message);
+    // if (msg != nullptr && msg->m_pkt != nullptr && msg->m_pkt->req != nullptr) {
+    //     auto trace = msg->m_pkt->req->getExtension<GPUPktTrace>();
+    //     if (trace) {
+    //         // printf("MessageBuffer::enqueue: enqueued message with address\n");
+    //         trace->trace_info.push(std::make_pair(curTick(), "Added to buffer: " + this->name()));
+    //     }
+    // }
 }
 
 Tick

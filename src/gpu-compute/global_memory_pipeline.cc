@@ -31,10 +31,12 @@
 
 #define __STDC_FORMAT_MACROS
 #include <cinttypes>
+#include "base/perfetto.hh"
 #include "debug/GPUCoalescer.hh"
 #include "debug/GPUMem.hh"
 #include "debug/GPUReg.hh"
 #include "debug/MYEXEC.hh"
+#include "debug/MYEXEC2.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/global_memory_pipeline.hh"
 #include "gpu-compute/gpu_dyn_inst.hh"
@@ -138,6 +140,30 @@ GlobalMemPipeline::exec()
         m->completeAcc(m);
         DPRINTF(MYEXEC, "GlobalDone CU %d WF[%d][%d] seq %d %s\n", w->computeUnit->cu_id, w->simdId,
                     w->wfSlotId, m->seqNum(), m->disassemble());
+        if (w->computeUnit->is_traced) {
+                    DPRINTF(MYEXEC2, "GR|%d|%d|%d|%d|%d|%s\n", w->computeUnit->cu_id, w->simdId,
+                        w->wfSlotId, m->seqNum(), w->wfDynId,
+                        m->disassemble());
+        }
+        m->_resp_time = curTick();
+
+        if (m->_exec_time != 0) {
+            PerfettoAnnotation info;
+            info["s#"] = std::to_string(m->seqNum());
+            if(w->computeUnit->is_traced) {
+                std::string track_name =
+                "WF[" + std::to_string(w->simdId) + "][" + std::to_string(w->wfSlotId) + "]";
+                perfettoLogger.writePerfettoLog(perfettoSlice(w->computeUnit->name()+"."+track_name, "", m->_exec_time, m->_resp_time, m->disassemble()), info);
+                // perfettoLogger.writePerfettoLog(perfettoSlice(w->computeUnit->name()+"."+"GlobalMem", "", m->_resp_time, m->_resp_time, "GLC done"), info);
+            }
+        }
+        else if (w->computeUnit->is_traced) {
+            PerfettoAnnotation info;
+            info["s#"] = std::to_string(m->seqNum());
+            info["asm"] = m->disassemble();
+            perfettoLogger.writePerfettoLog(perfettoSlice(w->computeUnit->name()+"."+"GlobalMem", "", m->_resp_time, m->_resp_time, "other"), info);
+        }
+
         if (m->isFlat()) {
             w->decLGKMInstsIssued();
         }
@@ -194,6 +220,9 @@ GlobalMemPipeline::exec()
                    !computeUnit.vectorGlobalMemUnit.rdy()) {
             stats.resp_stalled_by_vector_global_mem_unit++;
         }
+        assert(false);
+    } else if (computeUnit.is_traced) {
+        perfettoLogger.writePerfettoLog(perfettoSlice(computeUnit.name()+"."+"GlobalMem", "", curTick(), curTick(), "NA"), {});
     }
 
     // If pipeline has executed a global memory instruction

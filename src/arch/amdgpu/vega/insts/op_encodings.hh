@@ -1293,10 +1293,16 @@ namespace VegaISA
         {
             if ((gpuDynInst->executedAs() == enums::SC_GLOBAL && isFlat())
                     || isFlatGlobal()) {
+                // if (gpuDynInst->disassemble().find("flat_load") != std::string::npos) {
+                //     printf("Flat load instruction issued to global memory pipe\n");
+                // }
                 gpuDynInst->computeUnit()->globalMemoryPipe
                     .issueRequest(gpuDynInst);
             } else if (gpuDynInst->executedAs() == enums::SC_GROUP) {
                 assert(isFlat());
+                // if (gpuDynInst->disassemble().find("flat_load") != std::string::npos) {
+                //     printf("Flat load instruction issued to local memory pipe\n");
+                // }
                 gpuDynInst->computeUnit()->localMemoryPipe
                     .issueRequest(gpuDynInst);
             } else {

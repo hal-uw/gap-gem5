@@ -35,6 +35,7 @@
 #include "debug/GPUSched.hh"
 #include "debug/GPUSync.hh"
 #include "debug/MYEXEC.hh"
+#include "debug/MYEXEC2.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/gpu_static_inst.hh"
 #include "gpu-compute/scalar_register_file.hh"
@@ -277,8 +278,26 @@ ScoreboardCheckStage::exec()
                 toSchedule.markWFReady(curWave, exeResType);
                 DPRINTF(MYEXEC, "Scoreboard CU %d WF[%d][%d] seq %d %s\n", curWave->computeUnit->cu_id, curWave->simdId,
                     curWave->wfSlotId, curWave->nextInstr()->seqNum(), curWave->nextInstr()->disassemble());
-
+                if (curWave->computeUnit->is_traced) {
+                    DPRINTF(MYEXEC2, "SB|%d|%d|%d|%d|%d|%s\n", curWave->computeUnit->cu_id, curWave->simdId,
+                        curWave->wfSlotId, curWave->nextInstr()->seqNum(), curWave->wfDynId,
+                        curWave->nextInstr()->disassemble());
+                }
                 ++readyCounter;
+            }
+            else if (false){
+                if (curWave->computeUnit->is_traced) {
+                    if (curWave->nextInstr() != nullptr) {
+                        DPRINTF(MYEXEC2, "SB|%d|%d|%d|%d|%d|%s V\n", curWave->computeUnit->cu_id, curWave->simdId,
+                            curWave->wfSlotId, curWave->nextInstr()->seqNum(), curWave->wfDynId,
+                            curWave->nextInstr()->disassemble());
+                    }
+                    else {
+                        DPRINTF(MYEXEC2, "SB_N|%d|%d|%d|%d|%d|%s\n", curWave->computeUnit->cu_id, curWave->simdId,
+                            curWave->wfSlotId, -1, curWave->wfDynId,
+                            "E");
+                    }
+                }
             }
             collectStatistics(rdyStatus);
         }

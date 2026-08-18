@@ -542,6 +542,10 @@ namespace VegaISA
 
         ScalarRegU32 hwreg =
             gpuDynInst->computeUnit()->shader->getHwReg(hwregId);
+        // CU ID is located in bits 8 to 11
+        uint32_t m_mask = 0xf << 8;
+        uint32_t cu_id = ((gpuDynInst->computeUnit()->cu_id==0) & 0xf) << 8;
+        hwreg = (hwreg & ~m_mask) | cu_id;
         ScalarOperandU32 sdst(gpuDynInst, instData.SDST);
         sdst.read();
 

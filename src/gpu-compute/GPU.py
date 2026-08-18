@@ -145,6 +145,9 @@ class ComputeUnit(ClockedObject):
         1, "number of Scalar memory pipelines per CU"
     )
     simd_width = Param.Int(16, "width (number of lanes) per SIMD unit")
+    traced_cu_list = VectorParam.Int(
+        [0], "List of CU ids to trace (empty means trace none)"
+    )
 
     operand_network_length = Param.Int(
         1, "number of pipe stages of operand network"

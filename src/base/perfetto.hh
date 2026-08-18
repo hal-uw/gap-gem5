@@ -171,13 +171,13 @@ template <typename CType> class BasePerfettoCounter
         }
 
         // Log the first value (happens due to lastLogTick being -samplePeriod)
-        CType log_value = value;
+        [[maybe_unused]] CType log_value = value;
         if (lastLogTick >= 0) {
             log_value = sampleValue;
         }
 
-        perfettoLogger.writePerfettoLog(
-            perfettoCounter(_named->name(), "", ts, log_value, units), {});
+        // perfettoLogger.writePerfettoLog(
+        //     perfettoCounter(_named->name(), "", ts, log_value, units), {});
 
         lastLogTick = curTick();
         sampleValue = CType{}; // reset sample value after logging

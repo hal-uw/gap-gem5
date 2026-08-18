@@ -584,7 +584,9 @@ Wavefront::setStatus(status_e newStatus)
 
     // Perfetto example logging
     if (newStatus == S_STOPPED && status == S_RUNNING) {
-        auto wf_slice = perfettoSlice(this, wfStartTick, curTick(),
+        std::string track_name =
+                "WF[" + std::to_string(this->simdId) + "][" + std::to_string(this->wfSlotId) + "]_WF";
+        auto wf_slice = perfettoSlice(this->computeUnit->name()+"."+track_name, "", wfStartTick, curTick(),
                                       "WF " + std::to_string(wfDynId));
 
         PerfettoAnnotation wf_info;

@@ -84,6 +84,19 @@ LocalMemPipeline::exec()
         m->completeAcc(m);
         w->decLGKMInstsIssued();
 
+        m->_resp_time = curTick();
+
+        if (m->_exec_time != 0) {
+            PerfettoAnnotation info;
+            info["s#"] = std::to_string(m->seqNum());
+            if(w->computeUnit->is_traced) {
+                std::string track_name =
+                "WF[" + std::to_string(w->simdId) + "][" + std::to_string(w->wfSlotId) + "]";
+                perfettoLogger.writePerfettoLog(perfettoSlice(w->computeUnit->name()+"."+track_name, "", m->_exec_time, m->_resp_time, m->disassemble()), info);
+                // perfettoLogger.writePerfettoLog(perfettoSlice(w->computeUnit->name()+"."+"GlobalMem", "", m->_resp_time, m->_resp_time, "GLC done"), info);
+            }
+        }
+
         if (m->isLoad() || m->isAtomicRet()) {
             w->computeUnit->vrf[w->simdId]->
                 scheduleWriteOperandsFromLoad(w, m);

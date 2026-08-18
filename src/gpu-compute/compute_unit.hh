@@ -41,6 +41,7 @@
 #include "base/compiler.hh"
 #include "base/statistics.hh"
 #include "base/stats/group.hh"
+#include "base/perfetto.hh"
 #include "base/types.hh"
 #include "config/the_gpu_isa.hh"
 #include "enums/PrefetchType.hh"
@@ -291,6 +292,7 @@ class ComputeUnit : public ClockedObject
     typedef ComputeUnitParams Params;
     std::vector<std::vector<Wavefront*>> wfList;
     int cu_id;
+    bool is_traced;
 
     // array of vector register files, one per SIMD
     std::vector<VectorRegisterFile*> vrf;

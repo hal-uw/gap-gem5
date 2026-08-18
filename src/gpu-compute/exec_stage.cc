@@ -36,6 +36,7 @@
 #include "base/trace.hh"
 #include "debug/GPUSched.hh"
 #include "debug/MYEXEC.hh"
+#include "debug/MYEXEC2.hh"
 #include "gpu-compute/compute_unit.hh"
 #include "gpu-compute/vector_register_file.hh"
 #include "gpu-compute/wavefront.hh"
@@ -183,6 +184,27 @@ ExecStage::exec()
                 wf->exec();
                 DPRINTF(MYEXEC, "Exec CU %d WF[%d][%d] seq %d %s\n", wf->computeUnit->cu_id, wf->simdId,
                     wf->wfSlotId, gpu_dyn_inst->seqNum(), gpu_dyn_inst->disassemble());
+                if (wf->computeUnit->is_traced) {
+                    DPRINTF(MYEXEC2, "EX|%d|%d|%d|%d|%d|%s\n", wf->computeUnit->cu_id, wf->simdId,
+                        wf->wfSlotId, gpu_dyn_inst->seqNum(), wf->wfDynId,
+                        gpu_dyn_inst->disassemble());
+                }
+                if (gpu_dyn_inst->disassemble().find("glc") != std::string::npos || gpu_dyn_inst->disassemble().find("flat_load") != std::string::npos || gpu_dyn_inst->disassemble().find("global_load") != std::string::npos)
+                    gpu_dyn_inst->_exec_time = curTick();
+                else if (gpu_dyn_inst->disassemble().find("s_memtime") != std::string::npos)
+                    gpu_dyn_inst->_exec_time = curTick();
+                else {
+                    gpu_dyn_inst->_exec_time = 0;
+                    if (gpu_dyn_inst->disassemble().find("s_barrier") != std::string::npos || gpu_dyn_inst->disassemble().find("s_waitcnt") != std::string::npos) {
+                        if (computeUnit.is_traced) {//} || last != t.first) {
+                            PerfettoAnnotation info;
+                            info["i"] = gpu_dyn_inst->disassemble();
+                            std::string track_name =
+                            "WF[" + std::to_string(wf->simdId) + "][" + std::to_string(wf->wfSlotId) + "]_wait";
+                            perfettoLogger.writePerfettoLog(perfettoSlice(computeUnit.name()+"."+track_name, "", curTick(), curTick(), ""), info);
+                        }
+                    }
+                }
                 execWaves++;
                 (computeUnit.scheduleStage).deleteFromSch(wf);
                 fromSchedule.dispatchTransition(unitId, EMPTY);
