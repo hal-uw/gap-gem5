@@ -67,7 +67,7 @@ Inst_DS__DS_ADD_U32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -302,7 +302,7 @@ Inst_DS__DS_OR_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -404,7 +404,7 @@ Inst_DS__DS_WRITE_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -467,7 +467,7 @@ Inst_DS__DS_WRITE2_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
     ConstVecOperandU32 data1(gpuDynInst, extData.DATA1);
@@ -533,7 +533,7 @@ Inst_DS__DS_WRITE2ST64_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
     ConstVecOperandU32 data1(gpuDynInst, extData.DATA1);
@@ -719,7 +719,7 @@ Inst_DS__DS_ADD_F32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandF32 data(gpuDynInst, extData.DATA0);
 
@@ -780,7 +780,7 @@ Inst_DS__DS_WRITE_B8::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU8 data(gpuDynInst, extData.DATA0);
 
@@ -841,7 +841,7 @@ Inst_DS__DS_WRITE_B8_D16_HI::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -902,7 +902,7 @@ Inst_DS__DS_WRITE_B16::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU16 data(gpuDynInst, extData.DATA0);
 
@@ -963,7 +963,7 @@ Inst_DS__DS_WRITE_B16_D16_HI::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -1026,7 +1026,7 @@ Inst_DS__DS_ADD_RTN_U32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
 
@@ -1388,7 +1388,7 @@ Inst_DS__DS_CMPST_RTN_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
 
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 src(gpuDynInst, extData.DATA1);
@@ -1582,7 +1582,7 @@ Inst_DS__DS_READ_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -1646,7 +1646,7 @@ Inst_DS__DS_READ2_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -1713,7 +1713,7 @@ Inst_DS__DS_READ2ST64_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -1779,7 +1779,7 @@ Inst_DS__DS_READ_I8::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -1842,7 +1842,7 @@ Inst_DS__DS_READ_U8::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -1925,7 +1925,7 @@ Inst_DS__DS_READ_U16::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -1987,7 +1987,7 @@ Inst_DS__DS_READ_U16_D16::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -2050,7 +2050,7 @@ Inst_DS__DS_READ_U16_D16_HI::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -2119,7 +2119,7 @@ Inst_DS__DS_SWIZZLE_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
 
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
     VecOperandU32 vdst(gpuDynInst, extData.VDST);
@@ -2258,7 +2258,7 @@ Inst_DS__DS_PERMUTE_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
     VecOperandU32 vdst(gpuDynInst, extData.VDST);
@@ -2348,7 +2348,7 @@ Inst_DS__DS_BPERMUTE_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
     VecOperandU32 vdst(gpuDynInst, extData.VDST);
@@ -2437,7 +2437,7 @@ Inst_DS__DS_ADD_U64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU64 data(gpuDynInst, extData.DATA0);
 
@@ -2730,7 +2730,7 @@ Inst_DS__DS_WRITE_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU64 data(gpuDynInst, extData.DATA0);
 
@@ -2793,7 +2793,7 @@ Inst_DS__DS_WRITE2_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU64 data0(gpuDynInst, extData.DATA0);
     ConstVecOperandU64 data1(gpuDynInst, extData.DATA1);
@@ -2859,7 +2859,7 @@ Inst_DS__DS_WRITE2ST64_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU64 data0(gpuDynInst, extData.DATA0);
     ConstVecOperandU64 data1(gpuDynInst, extData.DATA1);
@@ -3425,7 +3425,7 @@ Inst_DS__DS_READ_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -3489,7 +3489,7 @@ Inst_DS__DS_READ2_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -3556,7 +3556,7 @@ Inst_DS__DS_READ2ST64_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -4499,7 +4499,7 @@ Inst_DS__DS_WRITE_B96::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
     ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + 1);
@@ -4561,7 +4561,7 @@ Inst_DS__DS_WRITE_B128::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
     ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
     ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + 1);
@@ -4626,7 +4626,7 @@ Inst_DS__DS_READ_B96::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -4689,7 +4689,7 @@ Inst_DS__DS_READ_B128::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -4759,7 +4759,7 @@ Inst_DS__DS_READ_B64_TR_B4::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -4888,7 +4888,7 @@ Inst_DS__DS_READ_B96_TR_B6::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -5036,7 +5036,7 @@ Inst_DS__DS_READ_B64_TR_B8::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
@@ -5151,7 +5151,7 @@ Inst_DS__DS_READ_B64_TR_B16::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->execUnitId = wf->execUnitId;
     gpuDynInst->latency.init(gpuDynInst->computeUnit());
     gpuDynInst->latency.set(
-        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
 
     addr.read();
