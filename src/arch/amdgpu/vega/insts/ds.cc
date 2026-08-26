@@ -420,6 +420,8 @@ Inst_DS__DS_WRITE_B32::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(1);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -487,6 +489,8 @@ Inst_DS__DS_WRITE2_B32::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(2);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -552,6 +556,8 @@ Inst_DS__DS_WRITE2ST64_B32::execute(GPUDynInstPtr gpuDynInst)
                 gpuDynInst->d_data))[lane * 2 + 1] = data1[lane];
         }
     }
+
+    gpuDynInst->numDstScalarDWords(2);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -796,6 +802,8 @@ Inst_DS__DS_WRITE_B8::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(1);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -856,6 +864,8 @@ Inst_DS__DS_WRITE_B8_D16_HI::execute(GPUDynInstPtr gpuDynInst)
                 bits(data[lane], 23, 16);
         }
     }
+
+    gpuDynInst->numDstScalarDWords(1);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -918,6 +928,8 @@ Inst_DS__DS_WRITE_B16::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(1);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -978,6 +990,8 @@ Inst_DS__DS_WRITE_B16_D16_HI::execute(GPUDynInstPtr gpuDynInst)
                 bits(data[lane], 31, 16);
         }
     }
+
+    gpuDynInst->numDstScalarDWords(1);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -1589,6 +1603,8 @@ Inst_DS__DS_READ_B32::execute(GPUDynInstPtr gpuDynInst)
 
     calcAddr(gpuDynInst, addr);
 
+    gpuDynInst->numSrcScalarDWords(1);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -1652,6 +1668,8 @@ Inst_DS__DS_READ2_B32::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(2);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -1720,6 +1738,8 @@ Inst_DS__DS_READ2ST64_B32::execute(GPUDynInstPtr gpuDynInst)
 
     calcAddr(gpuDynInst, addr);
 
+    gpuDynInst->numSrcScalarDWords(2);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -1786,6 +1806,8 @@ Inst_DS__DS_READ_I8::execute(GPUDynInstPtr gpuDynInst)
 
     calcAddr(gpuDynInst, addr);
 
+    gpuDynInst->numSrcScalarDWords(1);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -1848,6 +1870,8 @@ Inst_DS__DS_READ_U8::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(1);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -1932,6 +1956,8 @@ Inst_DS__DS_READ_U16::execute(GPUDynInstPtr gpuDynInst)
 
     calcAddr(gpuDynInst, addr);
 
+    gpuDynInst->numSrcScalarDWords(1);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 void
@@ -1993,6 +2019,8 @@ Inst_DS__DS_READ_U16_D16::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(1);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -2056,6 +2084,8 @@ Inst_DS__DS_READ_U16_D16_HI::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(1);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -2746,6 +2776,8 @@ Inst_DS__DS_WRITE_B64::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(2);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -2813,6 +2845,8 @@ Inst_DS__DS_WRITE2_B64::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(4);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -2878,6 +2912,8 @@ Inst_DS__DS_WRITE2ST64_B64::execute(GPUDynInstPtr gpuDynInst)
                 gpuDynInst->d_data))[lane * 2 + 1] = data1[lane];
         }
     }
+
+    gpuDynInst->numDstScalarDWords(4);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -3432,6 +3468,8 @@ Inst_DS__DS_READ_B64::execute(GPUDynInstPtr gpuDynInst)
 
     calcAddr(gpuDynInst, addr);
 
+    gpuDynInst->numSrcScalarDWords(2);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -3495,6 +3533,8 @@ Inst_DS__DS_READ2_B64::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(4);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -3562,6 +3602,8 @@ Inst_DS__DS_READ2ST64_B64::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(4);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -4523,6 +4565,8 @@ Inst_DS__DS_WRITE_B96::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(3);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -4589,6 +4633,8 @@ Inst_DS__DS_WRITE_B128::execute(GPUDynInstPtr gpuDynInst)
         }
     }
 
+    gpuDynInst->numDstScalarDWords(4);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -4632,6 +4678,8 @@ Inst_DS__DS_READ_B96::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(3);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -4695,6 +4743,8 @@ Inst_DS__DS_READ_B128::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(4);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -4765,6 +4815,8 @@ Inst_DS__DS_READ_B64_TR_B4::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(2);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -4894,6 +4946,8 @@ Inst_DS__DS_READ_B96_TR_B6::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(2);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
@@ -5043,6 +5097,8 @@ Inst_DS__DS_READ_B64_TR_B8::execute(GPUDynInstPtr gpuDynInst)
 
     calcAddr(gpuDynInst, addr);
 
+    gpuDynInst->numSrcScalarDWords(2);
+
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
 
@@ -5157,6 +5213,8 @@ Inst_DS__DS_READ_B64_TR_B16::execute(GPUDynInstPtr gpuDynInst)
     addr.read();
 
     calcAddr(gpuDynInst, addr);
+
+    gpuDynInst->numSrcScalarDWords(2);
 
     gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
 } // execute
