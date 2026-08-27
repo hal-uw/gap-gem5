@@ -165,7 +165,7 @@ class TCPCntrl(GPU_VIPER_TCP_Controller, CntrlBase):
         self.L1cache.dataArrayBanks = options.tcp_num_banks
         self.L1cache.tagArrayBanks = options.tcp_num_banks
         self.L1cache.create(options)
-        self.issue_latency = 1
+        self.issue_latency = options.tcp_issue_latency
         # TCP_Controller inherits this from RubyController
         self.mandatory_queue_latency = options.mandatory_queue_latency
 
@@ -426,6 +426,7 @@ class DirCntrl(GPU_VIPER_Directory_Controller, CntrlBase):
 
 def define_options(parser):
     parser.add_argument("--num-subcaches", type=int, default=4)
+    parser.add_argument("--tcp-issue-latency", type=int, default=1)
     parser.add_argument("--l3-data-latency", type=int, default=20)
     parser.add_argument("--l3-tag-latency", type=int, default=15)
     parser.add_argument("--cpu-to-dir-latency", type=int, default=120)
@@ -467,7 +468,17 @@ def define_options(parser):
         "--TCP_latency",
         type=int,
         default=4,
-        help="In combination with the number of banks for the "
+        help="Set tcp tag access latency. "
+        "In combination with the number of banks for the "
+        "TCP, this determines how many requests can happen "
+        "per cycle (i.e., the bandwidth)",
+    )
+    parser.add_argument(
+        "--TCP_latency_data",
+        type=int,
+        default=4,
+        help="Set tcp data access latency. "
+        "In combination with the number of banks for the "
         "TCP, this determines how many requests can happen "
         "per cycle (i.e., the bandwidth)",
     )
@@ -790,7 +801,7 @@ def construct_tcps(options, system, ruby_system, network):
         tcp_cntrl.WB = options.WB_L1
         tcp_cntrl.disableL1 = options.noL1
         tcp_cntrl.L1cache.tagAccessLatency = options.TCP_latency
-        tcp_cntrl.L1cache.dataAccessLatency = options.TCP_latency
+        tcp_cntrl.L1cache.dataAccessLatency = options.TCP_latency_data
 
         exec("ruby_system.tcp_cntrl%d = tcp_cntrl" % i)
         #
