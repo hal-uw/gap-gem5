@@ -39,6 +39,9 @@ def TLB_constructor(options, level, gpu_ctrl=None, full_system=False):
     if full_system:
         constructor_call = "VegaGPUTLB(\
                 gpu_device = gpu_ctrl, \
+                walker = VegaPagetableWalker(\
+                    pwc_fetch_bytes = getattr(\
+                        options, 'pwc_fetch_bytes', 64)), \
                 size = options.L%(level)dTLBentries, \
                 assoc = options.L%(level)dTLBassoc, \
                 hitLatency = options.L%(level)dAccessLatency,\
@@ -212,6 +215,14 @@ def config_tlb_hierarchy(
                         system.%s_tlb[%d].cpu_side_ports[0]"
                     % (name, index, name, index)
                 )
+                # Give each Vega coalescer a handle to the TLB it feeds so the
+                # L3 coalescer can read that TLB's line-coalescing predictor.
+                if full_system:
+                    exec(
+                        "system.%s_coalescer[%d].downstream_tlb = \
+                            system.%s_tlb[%d]"
+                        % (name, index, name, index)
+                    )
 
     # Connect the cpuSidePort of all the coalescers in level 1
     # < Modify here if you want a different configuration >

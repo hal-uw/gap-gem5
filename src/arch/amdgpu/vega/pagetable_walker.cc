@@ -91,6 +91,31 @@ Walker::WalkerState::startFunctional(Addr base, Addr vaddr,
         assert(devmem);
         devmem->access(read);
 
+        // Extract the requested 8B entry from the fetched block.
+        // Copy the full line before rewriting word 0 so
+        // pendingLineEntries preserves the original data.
+        assert(lineIndex < walker->pwcFetchEntries);
+        assert((read->getAddr() & (walker->pwcFetchBytes - 1)) == 0);
+        const uint64_t *lineData = read->getConstPtr<uint64_t>();
+        pendingLineAddr = read->getAddr();
+        pendingLineIndex = lineIndex;
+        for (unsigned i = 0; i < walker->pwcFetchEntries; i++)
+            pendingLineEntries[i] = letoh(lineData[i]);
+        pendingLineValid = true;
+
+        // Rewrite word 0 so stepWalk()'s getLE<uint64_t>() sees the
+        // correct entry.
+        uint64_t selectedEntry = letoh(lineData[lineIndex]);
+        read->setLE<uint64_t>(selectedEntry);
+
+        // Populate pending PWC metadata for deferred insertion in stepWalk()
+        Addr originalEntryAddr =
+            read->getAddr() + lineIndex * sizeof(uint64_t);
+        assert((originalEntryAddr & 0x7) == 0);
+        pendingEntryAddr = originalEntryAddr;
+        pendingEntry = selectedEntry;
+        pendingFromPwc = false;
+
         fault = stepWalk();
         assert(fault == NoFault || read == NULL);
 
@@ -136,7 +161,7 @@ Walker::WalkerState::initState(BaseMMU::Mode _mode, Addr baseAddr, Addr vaddr,
     mode = _mode;
     timing = !is_functional;
     enableNX = true;
-    dataSize = 8; // 64-bit PDEs / PTEs
+    dataSize = walker->pwcFetchBytes;
     nextState = PDE2;
 
     DPRINTF(GPUPTWalker, "Setup walk with base %#lx\n", baseAddr);
@@ -148,14 +173,25 @@ Walker::WalkerState::initState(BaseMMU::Mode _mode, Addr baseAddr, Addr vaddr,
     Addr pde2Addr = (((baseAddr >> 6) << 3) + (logical_addr >> 3 * 9)) << 3;
     DPRINTF(GPUPTWalker, "Walk PDE2 address is %#lx\n", pde2Addr);
 
+    // Align to the configured page-walk fetch block boundary.
+    const Addr blkSize = walker->pwcFetchBytes;
+    assert((pde2Addr & 0x7) == 0);           // 8-byte aligned
+    Addr alignedAddr = pde2Addr & ~(blkSize - 1);
+    assert((alignedAddr & (blkSize - 1)) == 0);
+    unsigned idx = (pde2Addr - alignedAddr) / sizeof(uint64_t);
+    assert(idx < walker->pwcFetchEntries);
+    lineIndex = idx;
+    DPRINTF(GPUPTWalker, "Aligned PDE2 %#lx -> %#lx lineIndex %u\n",
+            pde2Addr, alignedAddr, lineIndex);
+
     // Start populating the VegaTlbEntry response
     entry.vaddr = logical_addr;
 
     // Prepare the read packet that will be used at each level
     Request::Flags flags = Request::PHYSICAL;
 
-    RequestPtr request = std::make_shared<Request>(pde2Addr, dataSize, flags,
-                                                   walker->deviceRequestorId);
+    RequestPtr request = std::make_shared<Request>(
+        alignedAddr, dataSize, flags, walker->deviceRequestorId);
 
     read = new Packet(request, MemCmd::ReadReq);
     read->allocate();
@@ -187,12 +223,7 @@ Walker::WalkerState::startWalk()
             entry.paddr = entry.pte.ppn << PageShift;
             entry.paddr += entry.vaddr & mask(entry.logBytes);
 
-            // Insert to TLB
-            assert(walker);
-            assert(walker->tlb);
-            walker->tlb->insert(entry.vaddr, entry);
-
-            // Send translation return event
+            // Send translation return event. The TLB allocates the returned entry in the normal miss-return path.
             walker->walkerResponse(this, entry, tlbPkt);
         }
     }
@@ -211,17 +242,64 @@ Walker::WalkerState::stepWalk()
 
     walkStateMachine(pte, nextRead, doEndWalk, fault);
 
+    // Deferred PWC insertion: insert the previous response into the original
+    // PWC only if it was not final (doEndWalk means it IS the final entry)
+    // and not already from the PWC.
+    if (!doEndWalk && !pendingFromPwc && walker->enable_pwc
+        && walker->pwc.findEntry(pendingEntryAddr) == nullptr) {
+        walker->pwc.insert(pendingEntryAddr, pendingEntry);
+        walker->stats.pwcInsertions++;
+    }
+
+    // Deferred PWC2 neighbour insertion: on final entries from real memory
+    // responses, insert the other entries from the fetched line into PWC2.
+    if (doEndWalk && !pendingFromPwc && pendingLineValid
+        && walker->enable_pwc) {
+        DPRINTF(GPUPTWalker, "Skipping PWC insert for final entry %#lx, "
+                "inserting neighbours into PWC2\n", pendingEntryAddr);
+        for (unsigned i = 0; i < walker->pwcFetchEntries; i++) {
+            if (i == pendingLineIndex)
+                continue;
+
+            Addr neighbourAddr =
+                pendingLineAddr + i * sizeof(uint64_t);
+            PageTableEntry neighbourPte = pendingLineEntries[i];
+
+            // Skip invalid/non-present page-table entries
+            if (!neighbourPte.v) {
+                walker->stats.pwc2InvalidNeighboursSkipped++;
+                continue;
+            }
+
+            if (walker->neighbourPwc.findEntry(neighbourAddr) == nullptr) {
+                walker->neighbourPwc.insert(neighbourAddr, neighbourPte);
+                walker->stats.pwc2Insertions++;
+            }
+        }
+    }
+
     if (doEndWalk) {
         DPRINTF(GPUPTWalker, "ending walk\n");
         endWalk();
     } else {
         PacketPtr oldRead = read;
 
+        // Align the next read to the configured page-walk fetch block.
+        const Addr blkSize = walker->pwcFetchBytes;
+        assert((nextRead & 0x7) == 0);           // 8-byte aligned
+        Addr alignedAddr = nextRead & ~(blkSize - 1);
+        assert((alignedAddr & (blkSize - 1)) == 0);
+        unsigned idx = (nextRead - alignedAddr) / sizeof(uint64_t);
+        assert(idx < walker->pwcFetchEntries);
+        lineIndex = idx;
+        DPRINTF(GPUPTWalker, "Aligned next read %#lx -> %#lx lineIndex %u\n",
+                nextRead, alignedAddr, lineIndex);
         // If we didn't return, we're setting up another read.
         Request::Flags flags = oldRead->req->getFlags();
         flags.set(Request::UNCACHEABLE, uncacheable);
         RequestPtr request = std::make_shared<Request>(
-            nextRead, oldRead->getSize(), flags, walker->deviceRequestorId);
+            alignedAddr, oldRead->getSize(), flags,
+            walker->deviceRequestorId);
 
         read = new Packet(request, MemCmd::ReadReq);
         read->allocate();
@@ -385,18 +463,48 @@ Walker::WalkerState::sendPackets()
 bool
 Walker::sendTiming(WalkerState *sending_walker, PacketPtr pkt)
 {
-    auto walker_state = new WalkerSenderState(sending_walker);
+    auto walker_state = new WalkerSenderState(sending_walker,
+                                              sending_walker->lineIndex);
     pkt->pushSenderState(walker_state);
 
-    // If hit, send the response pkt immediately.
-    PWCEntry *entry = pwc.findEntry(pkt->getAddr());
-    if (entry != nullptr) {
-        DPRINTF(GPUPTWalker, "PTE found in buffer, skipping timing request.");
-        pkt->setLE<uint64_t>(entry->pteEntry);
+    // Reconstruct original 8B entry address from aligned fetch block address
+    Addr originalEntryAddr =
+        pkt->getAddr() + sending_walker->lineIndex * sizeof(uint64_t);
+    assert(sending_walker->lineIndex < pwcFetchEntries);
+    assert((originalEntryAddr & 0x7) == 0);
 
-        recvTimingResp(pkt);
+    if (enable_pwc) {
+        // Check original PWC first (non-final walk entries)
+        stats.pwcAccesses++;
+        PWCEntry *entry = pwc.findEntry(originalEntryAddr);
+        if (entry != nullptr) {
+            stats.pwcHits++;
+            DPRINTF(GPUPTWalker,
+                    "PTE found in PWC, skipping timing request.");
+            pkt->setLE<uint64_t>(entry->pteEntry);
+            walker_state->fromPwc = true;
 
-        return true;
+            recvTimingResp(pkt);
+
+            return true;
+        }
+        stats.pwcMisses++;
+
+        // Check PWC2 second (neighbouring final-level entries)
+        stats.pwc2Accesses++;
+        PWCEntry *entry2 = neighbourPwc.findEntry(originalEntryAddr);
+        if (entry2 != nullptr) {
+            stats.pwc2Hits++;
+            DPRINTF(GPUPTWalker,
+                    "PTE found in PWC2, skipping timing request.");
+            pkt->setLE<uint64_t>(entry2->pteEntry);
+            walker_state->fromPwc = true;
+
+            recvTimingResp(pkt);
+
+            return true;
+        }
+        stats.pwc2Misses++;
     }
 
     if (port.sendTimingReq(pkt)) {
@@ -426,14 +534,70 @@ Walker::recvTimingResp(PacketPtr pkt)
     WalkerSenderState *senderState =
         safe_cast<WalkerSenderState *>(pkt->popSenderState());
 
-    DPRINTF(GPUPTWalker, "Got response for %#lx from walker %p -- %#lx\n",
-            pkt->getAddr(), senderState->senderWalk, pkt->getLE<uint64_t>());
-    // on PWC miss, add the entry to PWC
-    if (enable_pwc && pwc.findEntry(pkt->getAddr()) == nullptr) {
-        pwc.insert(pkt->getAddr(), pkt->getLE<uint64_t>());
+    assert(senderState->lineIndex < pwcFetchEntries);
+    // Reconstruct original 8B entry address from aligned fetch block address
+    Addr originalEntryAddr =
+        pkt->getAddr() + senderState->lineIndex * sizeof(uint64_t);
+    assert((originalEntryAddr & 0x7) == 0);
+
+    WalkerState *ws = senderState->senderWalk;
+    uint64_t selectedEntry;
+
+    if (senderState->fromPwc) {
+        // PWC hit: word 0 already contains the correct entry
+        selectedEntry = pkt->getLE<uint64_t>();
+        ws->pendingLineValid = false;
+    } else {
+        // Real memory response. The timing read port can return stale data:
+        // page tables are written functionally to device memory (by the
+        // driver/CP) and are NOT coherent with the GPU timing cache hierarchy,
+        // so the timing read may observe an old/invalid PDE (e.g. ppn=0, v=0)
+        // even though device memory holds the correct entry. Re-read the
+        // configured page-table fetch block directly from device memory (as
+        // the functional walk does) so the walk observes the correct PTEs.
+        // The timing request is still used to model walk latency.
+        std::vector<uint64_t> devline(pwcFetchEntries, 0);
+        RequestPtr freq = std::make_shared<Request>(
+            pkt->getAddr(), pwcFetchBytes, Request::PHYSICAL,
+            deviceRequestorId);
+        PacketPtr fpkt = new Packet(freq, MemCmd::ReadReq);
+        fpkt->dataStatic(reinterpret_cast<uint8_t *>(devline.data()));
+        auto *devmem = system->getDeviceMemory(fpkt);
+        const uint64_t *lineData;
+        if (devmem) {
+            devmem->access(fpkt);
+            lineData = devline.data();
+        } else {
+            lineData = pkt->getConstPtr<uint64_t>();
+        }
+
+        ws->pendingLineAddr = pkt->getAddr();
+        ws->pendingLineIndex = senderState->lineIndex;
+        assert((ws->pendingLineAddr & (pwcFetchBytes - 1)) == 0);
+        for (unsigned i = 0; i < pwcFetchEntries; i++)
+            ws->pendingLineEntries[i] = letoh(lineData[i]);
+        ws->pendingLineValid = true;
+
+        // Extract from the fetched block and rewrite word 0
+        // so stepWalk()'s getLE<uint64_t>() sees the correct entry.
+        selectedEntry = letoh(lineData[senderState->lineIndex]);
+        pkt->setLE<uint64_t>(selectedEntry);
+
+        delete fpkt;
     }
 
-    senderState->senderWalk->startWalk();
+    DPRINTF(GPUPTWalker, "Got response for %#lx (entry %#lx) from walker %p "
+            "lineIndex %u fromPwc %d -- %#lx\n",
+            pkt->getAddr(), originalEntryAddr, ws,
+            senderState->lineIndex, senderState->fromPwc, selectedEntry);
+
+    // Store response metadata in WalkerState for deferred PWC insertion.
+    // stepWalk() will insert into the original PWC only for non-final entries.
+    ws->pendingEntryAddr = originalEntryAddr;
+    ws->pendingEntry = selectedEntry;
+    ws->pendingFromPwc = senderState->fromPwc;
+
+    ws->startWalk();
 
     delete senderState;
 }
@@ -444,6 +608,13 @@ Walker::invalidatePWC()
     for (auto &i : pwc) {
         if (i.valid) {
             pwc.invalidate(&i);
+            stats.pwcInvalidations++;
+        }
+    }
+    for (auto &i : neighbourPwc) {
+        if (i.valid) {
+            neighbourPwc.invalidate(&i);
+            stats.pwc2Invalidations++;
         }
     }
 }
@@ -472,7 +643,9 @@ Walker::recvReqRetry()
 void
 Walker::walkerResponse(WalkerState *state, VegaTlbEntry &entry, PacketPtr pkt)
 {
-    tlb->walkerResponse(entry, pkt);
+    // Propagate whether the final PTE came from the PWC/PWC2 (a PWC hit) or
+    // from memory (a real miss) so the TLB can update its line predictor.
+    tlb->walkerResponse(entry, pkt, state->pendingFromPwc);
 
     delete state;
 }
@@ -518,6 +691,31 @@ Walker::WalkerState::offsetFunc(Addr logicalAddr, int top, int lsb)
     assert(lsb < 32);
     return ((logicalAddr & ((1 << top) - 1)) >> lsb);
 }
+
+/**
+ * Stats
+ */
+Walker::WalkerStats::WalkerStats(statistics::Group *parent)
+    : statistics::Group(parent),
+      ADD_STAT(pwcAccesses, "Number of accesses to the original PWC"),
+      ADD_STAT(pwcHits, "Number of hits in the original PWC"),
+      ADD_STAT(pwcMisses, "Number of misses in the original PWC"),
+      ADD_STAT(pwcInsertions, "Number of insertions into the original PWC"),
+      ADD_STAT(pwcInvalidations,
+               "Number of invalidations in the original PWC"),
+      ADD_STAT(pwc2Accesses, "Number of accesses to the neighbour PWC"),
+      ADD_STAT(pwc2Hits, "Number of hits in the neighbour PWC"),
+      ADD_STAT(pwc2Misses, "Number of misses in the neighbour PWC"),
+      ADD_STAT(pwc2Insertions,
+               "Number of insertions into the neighbour PWC"),
+      ADD_STAT(pwc2Invalidations,
+               "Number of invalidations in the neighbour PWC"),
+      ADD_STAT(pwc2InvalidNeighboursSkipped,
+               "Number of invalid neighbour entries skipped during "
+               "PWC2 insertion")
+{
+}
+
 
 /**
  * gem5 methods

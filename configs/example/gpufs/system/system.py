@@ -115,7 +115,10 @@ def makeGpuFSSystem(args):
 
     # This arbitrary address is something in the X86 I/O hole
     hsapp_gpu_map_paddr = 0xE0000000
-    hsapp_pt_walker = VegaPagetableWalker()
+    pwc_fetch_bytes = getattr(args, "pwc_fetch_bytes", 64)
+    hsapp_pt_walker = VegaPagetableWalker(
+        pwc_fetch_bytes=pwc_fetch_bytes
+    )
     gpu_hsapp = HSAPacketProcessor(
         pioAddr=hsapp_gpu_map_paddr,
         numHWQueues=args.num_hw_queues,
@@ -127,7 +130,7 @@ def makeGpuFSSystem(args):
     if args.exit_after_gpu_kernel > -1:
         dispatcher_exit_events = True
     dispatcher = GPUDispatcher(kernel_exit_events=dispatcher_exit_events)
-    cp_pt_walker = VegaPagetableWalker()
+    cp_pt_walker = VegaPagetableWalker(pwc_fetch_bytes=pwc_fetch_bytes)
     target_kernel = args.skip_until_gpu_kernel
     gpu_cmd_proc = GPUCommandProcessor(
         hsapp=gpu_hsapp,
@@ -210,7 +213,9 @@ def makeGpuFSSystem(args):
     sdma_pt_walkers = []
     sdma_engines = []
     for sdma_idx in range(num_sdmas):
-        sdma_pt_walker = VegaPagetableWalker()
+        sdma_pt_walker = VegaPagetableWalker(
+            pwc_fetch_bytes=pwc_fetch_bytes
+        )
         sdma_engine = SDMAEngine(
             walker=sdma_pt_walker,
             mmio_base=sdma_bases[sdma_idx],
