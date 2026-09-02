@@ -178,6 +178,7 @@ class TCPCntrl(GPU_VIPER_TCP_Controller, CntrlBase):
         self.coalescer.is_cpu_sequencer = False
         if options.tcp_deadlock_threshold:
             self.coalescer.deadlock_threshold = options.tcp_deadlock_threshold
+        self.coalescer.disable_deadlock_check = options.disable_watchdog
         self.coalescer.max_coalesces_per_cycle = (
             options.max_coalesces_per_cycle
         )
@@ -218,13 +219,13 @@ class TCPCntrl(GPU_VIPER_TCP_Controller, CntrlBase):
         self.coalescer.ruby_system = ruby_system
         self.coalescer.support_inst_reqs = False
         self.coalescer.is_cpu_sequencer = False
+        self.coalescer.disable_deadlock_check = options.disable_watchdog
 
         self.sequencer = RubySequencer(ruby_system=ruby_system)
         self.sequencer.version = self.seqCount()
         self.sequencer.dcache = self.L1cache
         self.sequencer.ruby_system = ruby_system
         self.sequencer.is_cpu_sequencer = True
-
         self.use_seq_not_coal = True
 
         self.ruby_system = ruby_system
@@ -503,6 +504,14 @@ def define_options(parser):
         "--tcp-deadlock-threshold",
         type=int,
         help="Set the TCP deadlock threshold to some value",
+    )
+    parser.add_argument(
+        "--disable-watchdog",
+        action="store_true",
+        default=False,
+        help="Disable the GPU coalescer deadlock watchdog (which otherwise "
+             "aborts on long-lived outstanding requests). Useful for "
+             "slow-memory sensitivity experiments.",
     )
     parser.add_argument(
         "--max-coalesces-per-cycle",
