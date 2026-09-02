@@ -1345,6 +1345,8 @@ Inst_DS::initOperandInfo()
     for (opIdx = 0; opIdx < numSrcRegOperands(); opIdx++) {
         srcOps.emplace_back(srcs[opIdx], getOperandSize(opIdx), true, false,
                             true, false);
+        if (instData.ACC && opIdx > 0)
+            srcOps.back().setAccum();
     }
 
     if (numDstRegOperands()) {
@@ -1352,6 +1354,8 @@ Inst_DS::initOperandInfo()
         int reg = extData.VDST;
         dstOps.emplace_back(reg, getOperandSize(opIdx), false, false, true,
                             false);
+        if (instData.ACC)
+            dstOps.back().setAccum();
     }
 
     assert(srcOps.size() == numSrcRegOperands());

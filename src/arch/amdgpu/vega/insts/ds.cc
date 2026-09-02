@@ -406,7 +406,8 @@ Inst_DS__DS_WRITE_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
+    ConstVecOperandU32 data(gpuDynInst,
+                            extData.DATA0 + accDataOffset(wf));
 
     addr.read();
     data.read();
@@ -471,8 +472,10 @@ Inst_DS__DS_WRITE2_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
-    ConstVecOperandU32 data1(gpuDynInst, extData.DATA1);
+    ConstVecOperandU32 data0(gpuDynInst,
+                             extData.DATA0 + accDataOffset(wf));
+    ConstVecOperandU32 data1(gpuDynInst,
+                             extData.DATA1 + accDataOffset(wf));
 
     addr.read();
     data0.read();
@@ -539,8 +542,10 @@ Inst_DS__DS_WRITE2ST64_B32::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
-    ConstVecOperandU32 data1(gpuDynInst, extData.DATA1);
+    ConstVecOperandU32 data0(gpuDynInst,
+                             extData.DATA0 + accDataOffset(wf));
+    ConstVecOperandU32 data1(gpuDynInst,
+                             extData.DATA1 + accDataOffset(wf));
 
     addr.read();
     data0.read();
@@ -1621,7 +1626,8 @@ Inst_DS__DS_READ_B32::initiateAcc(GPUDynInstPtr gpuDynInst)
 void
 Inst_DS__DS_READ_B32::completeAcc(GPUDynInstPtr gpuDynInst)
 {
-    VecOperandU32 vdst(gpuDynInst, extData.VDST);
+    Wavefront *wf = gpuDynInst->wavefront();
+    VecOperandU32 vdst(gpuDynInst, extData.VDST + accDataOffset(wf));
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (gpuDynInst->exec_mask[lane]) {
@@ -1686,8 +1692,10 @@ Inst_DS__DS_READ2_B32::initiateAcc(GPUDynInstPtr gpuDynInst)
 void
 Inst_DS__DS_READ2_B32::completeAcc(GPUDynInstPtr gpuDynInst)
 {
-    VecOperandU32 vdst0(gpuDynInst, extData.VDST);
-    VecOperandU32 vdst1(gpuDynInst, extData.VDST + 1);
+    Wavefront *wf = gpuDynInst->wavefront();
+    unsigned acc = accDataOffset(wf);
+    VecOperandU32 vdst0(gpuDynInst, extData.VDST + acc);
+    VecOperandU32 vdst1(gpuDynInst, extData.VDST + acc + 1);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (gpuDynInst->exec_mask[lane]) {
@@ -2762,7 +2770,8 @@ Inst_DS__DS_WRITE_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU64 data(gpuDynInst, extData.DATA0);
+    ConstVecOperandU64 data(gpuDynInst,
+                            extData.DATA0 + accDataOffset(wf));
 
     addr.read();
     data.read();
@@ -2827,8 +2836,10 @@ Inst_DS__DS_WRITE2_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU64 data0(gpuDynInst, extData.DATA0);
-    ConstVecOperandU64 data1(gpuDynInst, extData.DATA1);
+    ConstVecOperandU64 data0(gpuDynInst,
+                             extData.DATA0 + accDataOffset(wf));
+    ConstVecOperandU64 data1(gpuDynInst,
+                             extData.DATA1 + accDataOffset(wf));
 
     addr.read();
     data0.read();
@@ -2895,8 +2906,10 @@ Inst_DS__DS_WRITE2ST64_B64::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU64 data0(gpuDynInst, extData.DATA0);
-    ConstVecOperandU64 data1(gpuDynInst, extData.DATA1);
+    ConstVecOperandU64 data0(gpuDynInst,
+                             extData.DATA0 + accDataOffset(wf));
+    ConstVecOperandU64 data1(gpuDynInst,
+                             extData.DATA1 + accDataOffset(wf));
 
     addr.read();
     data0.read();
@@ -3486,7 +3499,8 @@ Inst_DS__DS_READ_B64::initiateAcc(GPUDynInstPtr gpuDynInst)
 void
 Inst_DS__DS_READ_B64::completeAcc(GPUDynInstPtr gpuDynInst)
 {
-    VecOperandU64 vdst(gpuDynInst, extData.VDST);
+    Wavefront *wf = gpuDynInst->wavefront();
+    VecOperandU64 vdst(gpuDynInst, extData.VDST + accDataOffset(wf));
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (gpuDynInst->exec_mask[lane]) {
@@ -3551,8 +3565,10 @@ Inst_DS__DS_READ2_B64::initiateAcc(GPUDynInstPtr gpuDynInst)
 void
 Inst_DS__DS_READ2_B64::completeAcc(GPUDynInstPtr gpuDynInst)
 {
-    VecOperandU64 vdst0(gpuDynInst, extData.VDST);
-    VecOperandU64 vdst1(gpuDynInst, extData.VDST + 2);
+    Wavefront *wf = gpuDynInst->wavefront();
+    unsigned acc = accDataOffset(wf);
+    VecOperandU64 vdst0(gpuDynInst, extData.VDST + acc);
+    VecOperandU64 vdst1(gpuDynInst, extData.VDST + acc + 2);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (gpuDynInst->exec_mask[lane]) {
@@ -4543,9 +4559,10 @@ Inst_DS__DS_WRITE_B96::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
-    ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + 1);
-    ConstVecOperandU32 data2(gpuDynInst, extData.DATA0 + 2);
+    unsigned acc = accDataOffset(wf);
+    ConstVecOperandU32 data0(gpuDynInst, extData.DATA0 + acc);
+    ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + acc + 1);
+    ConstVecOperandU32 data2(gpuDynInst, extData.DATA0 + acc + 2);
 
     addr.read();
     data0.read();
@@ -4607,10 +4624,11 @@ Inst_DS__DS_WRITE_B128::execute(GPUDynInstPtr gpuDynInst)
     gpuDynInst->latency.set(
         gpuDynInst->computeUnit()->cyclesToTicks(Cycles(60)));
     ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
-    ConstVecOperandU32 data0(gpuDynInst, extData.DATA0);
-    ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + 1);
-    ConstVecOperandU32 data2(gpuDynInst, extData.DATA0 + 2);
-    ConstVecOperandU32 data3(gpuDynInst, extData.DATA0 + 3);
+    unsigned acc = accDataOffset(wf);
+    ConstVecOperandU32 data0(gpuDynInst, extData.DATA0 + acc);
+    ConstVecOperandU32 data1(gpuDynInst, extData.DATA0 + acc + 1);
+    ConstVecOperandU32 data2(gpuDynInst, extData.DATA0 + acc + 2);
+    ConstVecOperandU32 data3(gpuDynInst, extData.DATA0 + acc + 3);
 
     addr.read();
     data0.read();
@@ -4697,9 +4715,11 @@ Inst_DS__DS_READ_B96::initiateAcc(GPUDynInstPtr gpuDynInst)
 void
 Inst_DS__DS_READ_B96::completeAcc(GPUDynInstPtr gpuDynInst)
 {
-    VecOperandU32 vdst0(gpuDynInst, extData.VDST);
-    VecOperandU32 vdst1(gpuDynInst, extData.VDST + 1);
-    VecOperandU32 vdst2(gpuDynInst, extData.VDST + 2);
+    Wavefront *wf = gpuDynInst->wavefront();
+    unsigned acc = accDataOffset(wf);
+    VecOperandU32 vdst0(gpuDynInst, extData.VDST + acc);
+    VecOperandU32 vdst1(gpuDynInst, extData.VDST + acc + 1);
+    VecOperandU32 vdst2(gpuDynInst, extData.VDST + acc + 2);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (gpuDynInst->exec_mask[lane]) {
@@ -4762,10 +4782,12 @@ Inst_DS__DS_READ_B128::initiateAcc(GPUDynInstPtr gpuDynInst)
 void
 Inst_DS__DS_READ_B128::completeAcc(GPUDynInstPtr gpuDynInst)
 {
-    VecOperandU32 vdst0(gpuDynInst, extData.VDST);
-    VecOperandU32 vdst1(gpuDynInst, extData.VDST + 1);
-    VecOperandU32 vdst2(gpuDynInst, extData.VDST + 2);
-    VecOperandU32 vdst3(gpuDynInst, extData.VDST + 3);
+    Wavefront *wf = gpuDynInst->wavefront();
+    unsigned acc = accDataOffset(wf);
+    VecOperandU32 vdst0(gpuDynInst, extData.VDST + acc);
+    VecOperandU32 vdst1(gpuDynInst, extData.VDST + acc + 1);
+    VecOperandU32 vdst2(gpuDynInst, extData.VDST + acc + 2);
+    VecOperandU32 vdst3(gpuDynInst, extData.VDST + acc + 3);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (gpuDynInst->exec_mask[lane]) {

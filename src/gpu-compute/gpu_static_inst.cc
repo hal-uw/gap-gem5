@@ -71,9 +71,30 @@ GPUStaticInst::generateVirtToPhysMap(Wavefront *wf, ComputeUnit *cu,
     int num_dwords = op.sizeInDWords();
     int virt_idx = op.registerIndex(wf->reservedScalarRegs);
 
+    // CDNA ACC bit: the operand's data registers live in the accumulator
+    // (AGPR) window of the unified VRF, which begins at wf->accumOffset.
+    // KEEP IN SYNC with Inst_DS::accDataOffset() (op_encodings.hh), which
+    // applies the identical offset on the data path during execute().
+    if (op.isAccum()) {
+        virt_idx += wf->accumOffset;
+    }
+
     int phys_idx = -1;
     for (int i = 0; i < num_dwords; i++) {
         if (opType == OpType::SRC_VEC || opType == OpType::DST_VEC) {
+            const int this_virt_idx = virt_idx + i;
+            panic_if(this_virt_idx >= wf->reservedVectorRegs,
+                     "%s maps %s vector %s operand out of reserved VGPR "
+                     "range: virt_idx=%d raw_reg=%d base_reg=%d dword=%d/%d "
+                     "reserved=%d accum_offset=%u is_accum=%d "
+                     "reserved_sgprs=%d\n",
+                     disassemble().c_str(),
+                     opType == OpType::SRC_VEC ? "src" : "dst",
+                     op.isAccum() ? "AGPR" : "VGPR",
+                     this_virt_idx, op.rawRegisterIndex(),
+                     op.registerIndex(wf->reservedScalarRegs), i, num_dwords,
+                     wf->reservedVectorRegs, wf->accumOffset, op.isAccum(),
+                     wf->reservedScalarRegs);
             phys_idx = cu->registerManager->mapVgpr(wf, virt_idx + i);
         } else {
             assert(opType == OpType::SRC_SCALAR ||

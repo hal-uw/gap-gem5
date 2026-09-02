@@ -983,6 +983,14 @@ class Inst_DS : public VEGAGPUStaticInst
     void initOperandInfo() override;
 
   protected:
+    // CDNA ACC data registers are mapped into the AGPR window of the
+    // unified vector register file. ADDR remains an ordinary VGPR.
+    unsigned
+    accDataOffset(Wavefront *wf) const
+    {
+        return instData.ACC ? wf->accumOffset : 0;
+    }
+
     template <typename T>
     void
     initMemRead(GPUDynInstPtr gpuDynInst, Addr offset)
