@@ -223,12 +223,7 @@ Walker::WalkerState::startWalk()
             entry.paddr = entry.pte.ppn << PageShift;
             entry.paddr += entry.vaddr & mask(entry.logBytes);
 
-            // Insert to TLB
-            assert(walker);
-            assert(walker->tlb);
-            walker->tlb->insert(entry.vaddr, entry);
-
-            // Send translation return event
+            // Send translation return event. The TLB allocates the returned entry in the normal miss-return path.
             walker->walkerResponse(this, entry, tlbPkt);
         }
     }
@@ -648,7 +643,9 @@ Walker::recvReqRetry()
 void
 Walker::walkerResponse(WalkerState *state, VegaTlbEntry &entry, PacketPtr pkt)
 {
-    tlb->walkerResponse(entry, pkt);
+    // Propagate whether the final PTE came from the PWC/PWC2 (a PWC hit) or
+    // from memory (a real miss) so the TLB can update its line predictor.
+    tlb->walkerResponse(entry, pkt, state->pendingFromPwc);
 
     delete state;
 }

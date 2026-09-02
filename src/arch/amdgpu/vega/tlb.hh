@@ -41,6 +41,7 @@
 #include "arch/generic/mmu.hh"
 #include "base/statistics.hh"
 #include "base/trace.hh"
+#include "base/sat_counter.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/VegaGPUTLB.hh"
@@ -115,9 +116,10 @@ class GpuTLB : public ClockedObject
 
     int getSet(Addr va, unsigned int page_shift);
 
-    // List of possible page size, 4k and 2m for now
-    const std::array<unsigned int, 2> logPageShiftList = {VegaISA::PageShift,
-                                                          21};
+    // Page sizes probed on lookup (4K, 2M, 1G, 512G). Must match the sizes
+    // the walker can install, else large-page entries are never found.
+    const std::array<unsigned int, 4> logPageShiftList = {VegaISA::PageShift,
+                                                          21, 30, 39};
 
     int size;
     int assoc;
@@ -193,6 +195,14 @@ class GpuTLB : public ClockedObject
         // from the perspective of this TLB
         statistics::Scalar localCycles;
         statistics::Formula localLatency;
+
+        // Page-size breakdowns for diagnosing TLB reuse/capacity behavior.
+        statistics::Scalar inserts4K;
+        statistics::Scalar inserts2M;
+        statistics::Scalar localHits4K;
+        statistics::Scalar localHits2M;
+        statistics::Scalar walkerReturns4K;
+        statistics::Scalar walkerReturns2M;
     } stats;
 
     VegaTlbEntry *insert(Addr vpn, VegaTlbEntry &entry);
@@ -210,7 +220,24 @@ class GpuTLB : public ClockedObject
     };
     VegaTlbEntry *tlbLookup(const RequestPtr &req, bool update_stats);
 
-    void walkerResponse(VegaTlbEntry &entry, PacketPtr pkt);
+    // Line-coalescing predictor: a 4-bit saturating counter,
+    // meaningful only at the L3 TLB. A real TLB miss (walk that reached memory)
+    // decrements it toward "expect an L3 miss"; a TLB hit increments it. A PWC
+    // or PWC2 hit deliberately does not count as a hit and leaves it unchanged.
+    // When the MSB is clear we expect an L3 miss and it is worthwhile for the
+    // L3 coalescer to line-coalesce (prefetch a full PWC2 line).
+    static constexpr unsigned LinePredBits = 4;
+    SatCounter8 lineCounter{LinePredBits, 0};
+    void noteTlbHit() { lineCounter++; }
+    void noteTlbMiss() { lineCounter--; }
+    bool shouldLineCoalesce() const
+    {
+        const uint8_t msb = 1u << (LinePredBits - 1);
+        return !(static_cast<uint8_t>(lineCounter) & msb);
+    }
+
+    void walkerResponse(VegaTlbEntry &entry, PacketPtr pkt,
+                        bool from_pwc = false);
     void handleTranslationReturn(Addr addr, tlbOutcome outcome, PacketPtr pkt);
 
     void handleFuncTranslationReturn(PacketPtr pkt, tlbOutcome outcome);

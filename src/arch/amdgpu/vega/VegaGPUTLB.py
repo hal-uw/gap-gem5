@@ -124,3 +124,8 @@ class VegaTLBCoalescer(ClockedObject):
     cpu_side_ports = VectorResponsePort("Port on side closer to CPU/CU")
     mem_side_ports = VectorRequestPort("Port on side closer to memory")
     disableCoalescing = Param.Bool(False, "Dispable Coalescing")
+    downstream_tlb = Param.VegaGPUTLB(
+        NULL,
+        "The TLB this coalescer feeds; used by the L3 coalescer to read the "
+        "line-coalescing predictor",
+    )

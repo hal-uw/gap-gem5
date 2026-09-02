@@ -215,6 +215,14 @@ def config_tlb_hierarchy(
                         system.%s_tlb[%d].cpu_side_ports[0]"
                     % (name, index, name, index)
                 )
+                # Give each Vega coalescer a handle to the TLB it feeds so the
+                # L3 coalescer can read that TLB's line-coalescing predictor.
+                if full_system:
+                    exec(
+                        "system.%s_coalescer[%d].downstream_tlb = \
+                            system.%s_tlb[%d]"
+                        % (name, index, name, index)
+                    )
 
     # Connect the cpuSidePort of all the coalescers in level 1
     # < Modify here if you want a different configuration >

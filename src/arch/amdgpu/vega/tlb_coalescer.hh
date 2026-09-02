@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "arch/amdgpu/vega/tlb.hh"
+#include "base/sat_counter.hh"
 #include "base/statistics.hh"
 #include "mem/port.hh"
 #include "mem/request.hh"
@@ -132,7 +133,22 @@ class VegaTLBCoalescer : public ClockedObject
     // latency of a request to be completed
     statistics::Formula latency;
 
+    // Diagnostics for outstanding-translation backpressure.
+    statistics::Scalar pendingBlockedProbes;
+    statistics::Scalar pendingBlockedPackets;
+    statistics::Scalar downstreamSlotBlocked;
+    statistics::Scalar sendTimingReqFailed;
+    statistics::Scalar probesIssued;
+    statistics::Scalar cleanupEntries;
+    statistics::Scalar retryEvents;
+    statistics::Scalar fifoMaxEntries;
+    statistics::Scalar issuedTranslationsMax;
+    statistics::Scalar issuedTranslationPacketsMax;
+
     bool canCoalesce(PacketPtr pkt1, PacketPtr pkt2, Addr pagebytes);
+    void updateOccupancyStats();
+    size_t coalescerFIFOEntries() const;
+    size_t issuedTranslationPackets() const;
     void updatePhysAddresses(PacketPtr pkt);
     void regStats() override;
 
@@ -220,10 +236,48 @@ class VegaTLBCoalescer : public ClockedObject
     /// in order to free memory and do the required clean-up
     EventFunctionWrapper cleanupEvent;
 
-    void reissue_pkt_helper(PacketPtr pkt);
+    void reissue_pkt_helper(PacketPtr pkt,
+                            Addr reissue_pgsize = VegaISA::PageBytes);
 
     Addr default_pgSize = 1ULL << 21;
     std::set<Addr> potentialPagesize;
+
+    // Per-coalescer page-size predictor.
+    // MSB set => predict 4 KiB, otherwise predict 2 MiB..
+    static constexpr unsigned SizePredBits = 4;
+    SatCounter8 sizePredictor;
+    // Update the size predictor from a returned entry's page size.
+    void updateSizePredictor(Addr returned_pgsize);
+    // The page size to speculate for a newly opened coalesced group.
+    Addr predictedPageSize() const;
+
+    // L3-only line coalescing support.
+    // Uses the downstream TLB's line predictor to decide whether to open
+    // a full PWC2-line group and reissue unresolved neighbours.
+    static constexpr unsigned LineGroupPages = 16;
+    VegaISA::GpuTLB *downstreamTLB = nullptr;
+    bool lineCoalesceEnabled() const
+    {
+        return tlb_level == 3 && downstreamTLB &&
+               downstreamTLB->shouldLineCoalesce();
+    }
+    // Assumed page granule for a freshly opened coalesced group: the predicted
+    // page size, widened to a full line when line-coalescing is enabled.
+    Addr newGroupPageSize();
+
+    // Largest granule used as an issuedTranslationsTable key. Giant walker
+    // pages (1 GiB+) must be clamped to this, else the block check collapses
+    // a whole region onto one key and serializes every request in it.
+    Addr maxCoalescePageSize() const
+    {
+        return lineCoalesceEnabled() ? default_pgSize * LineGroupPages
+                                     : default_pgSize;
+    }
+    Addr clampCoalescePageSize(Addr pg_size) const
+    {
+        Addr cap = maxCoalescePageSize();
+        return pg_size > cap ? cap : pg_size;
+    }
 
     int tlb_level;
     int maxDownstream;
