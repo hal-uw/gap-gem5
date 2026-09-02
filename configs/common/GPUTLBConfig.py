@@ -39,6 +39,9 @@ def TLB_constructor(options, level, gpu_ctrl=None, full_system=False):
     if full_system:
         constructor_call = "VegaGPUTLB(\
                 gpu_device = gpu_ctrl, \
+                walker = VegaPagetableWalker(\
+                    pwc_fetch_bytes = getattr(\
+                        options, 'pwc_fetch_bytes', 64)), \
                 size = options.L%(level)dTLBentries, \
                 assoc = options.L%(level)dTLBassoc, \
                 hitLatency = options.L%(level)dAccessLatency,\

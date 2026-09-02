@@ -72,6 +72,24 @@ class VegaPagetableWalker(ClockedObject):
     )
     enable_pwc = Param.Bool(True, "Enable page walk cache")
 
+    # Second PWC for caching neighbouring final-level entries fetched from
+    # the same page-table memory fetch. The fetch width is controlled by
+    # pwc_fetch_bytes.
+    neighbour_pwc_entries = Param.Int(256, "Neighbour PWC entries")
+    neighbour_pwc_replacement_policy = Param.BaseReplacementPolicy(
+        LRURP(), "Replacement policy of the neighbour PWC"
+    )
+    neighbour_pwc_indexing_policy = Param.VegaPWCIndexingPolicy(
+        VegaPWCIndexingPolicy(
+            entries=Parent.neighbour_pwc_entries,
+            assoc=Parent.neighbour_pwc_entries,
+        ),
+        "Indexing policy of the neighbour PWC",
+    )
+
+    pwc_fetch_bytes = Param.Unsigned(
+        128, "Page-walk fetch granularity in bytes"
+    )
 
 class VegaGPUTLB(ClockedObject):
     type = "VegaGPUTLB"

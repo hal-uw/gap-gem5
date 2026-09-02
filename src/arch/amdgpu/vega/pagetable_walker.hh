@@ -37,6 +37,8 @@
 #include "arch/amdgpu/vega/page_walk_cache.hh"
 #include "arch/amdgpu/vega/pagetable.hh"
 #include "arch/amdgpu/vega/tlb.hh"
+#include "base/logging.hh"
+#include "base/statistics.hh"
 #include "base/types.hh"
 #include "debug/GPUPTWalker.hh"
 #include "mem/packet.hh"
@@ -55,7 +57,12 @@ namespace VegaISA
 class Walker : public ClockedObject
 {
   protected:
+    // PWC for non-final page-table walk levels (Global, Upper, Middle).
     PageWalkCache pwc;
+
+    // PWC for neighbouring final-level entries from the same page-table
+    // memory fetch. The fetch width is controlled by pwcFetchBytes.
+    PageWalkCache neighbourPwc;
 
     // Port for accessing memory
     class WalkerPort : public RequestPort
@@ -74,6 +81,14 @@ class Walker : public ClockedObject
 
     friend class WalkerPort;
     WalkerPort port;
+
+    static constexpr Addr MaxPwcFetchBytes = 1024;
+    static constexpr unsigned MaxPwcFetchEntries =
+        MaxPwcFetchBytes / sizeof(uint64_t);
+
+    // Width of page-table memory fetches used by the walker/PWC2 model.
+    Addr pwcFetchBytes;
+    unsigned pwcFetchEntries;
 
     // State to track each walk of the page table
     class WalkerState
@@ -106,18 +121,30 @@ class Walker : public ClockedObject
         bool timing;
         PacketPtr tlbPkt;
         int blockFragmentSize;
+        // Index of the requested 8B entry within the current fetch block.
+        unsigned lineIndex;
+
+        // Response metadata for deferred PWC insertion (set by
+        // recvTimingResp, consumed by stepWalk after walkStateMachine).
+        Addr pendingEntryAddr;
+        uint64_t pendingEntry;
+        bool pendingFromPwc;
+
+        // Full fetched line data for deferred PWC2 neighbour insertion.
+        // Populated from real memory responses; invalid for PWC hits.
+        Addr pendingLineAddr;
+        uint64_t pendingLineEntries[MaxPwcFetchEntries];
+        unsigned pendingLineIndex;
+        bool pendingLineValid;
 
       public:
         WalkerState(Walker *_walker, PacketPtr pkt, bool is_functional = false)
-            : walker(_walker),
-              state(Ready),
-              nextState(Ready),
-              dataSize(8),
-              enableNX(true),
-              retrying(false),
-              started(false),
-              tlbPkt(pkt),
-              blockFragmentSize(0)
+            : walker(_walker), state(Ready), nextState(Ready), dataSize(0),
+              enableNX(true), retrying(false), started(false), tlbPkt(pkt),
+              blockFragmentSize(0), lineIndex(0),
+              pendingEntryAddr(0), pendingEntry(0), pendingFromPwc(false),
+              pendingLineAddr(0), pendingLineIndex(0),
+              pendingLineValid(false)
         {
             DPRINTF(GPUPTWalker, "Walker::WalkerState %p %p %d\n", this,
                     walker, state);
@@ -154,6 +181,8 @@ class Walker : public ClockedObject
     };
 
     friend class WalkerState;
+
+
     // State for timing and atomic accesses (need multiple per walker in
     // the case of multiple outstanding requests in timing mode)
     std::list<WalkerState *> currStates;
@@ -162,9 +191,15 @@ class Walker : public ClockedObject
 
     struct WalkerSenderState : public Packet::SenderState
     {
-        WalkerState *senderWalk;
-        WalkerSenderState(WalkerState *_senderWalk) : senderWalk(_senderWalk)
-        {}
+        WalkerState * senderWalk;
+        // Index of the requested 8B entry within the fetch block.
+        unsigned lineIndex;
+        // True when the response comes from a PWC hit, not real memory
+        bool fromPwc;
+        WalkerSenderState(WalkerState * _senderWalk, unsigned _lineIndex = 0,
+                          bool _fromPwc = false)
+            : senderWalk(_senderWalk), lineIndex(_lineIndex),
+              fromPwc(_fromPwc) {}
     };
 
   public:
@@ -223,6 +258,26 @@ class Walker : public ClockedObject
     // System pointer for functional accesses
     System *system;
 
+    struct WalkerStats : public statistics::Group
+    {
+        WalkerStats(statistics::Group *parent);
+
+        // Original PWC stats (non-final walk levels)
+        statistics::Scalar pwcAccesses;
+        statistics::Scalar pwcHits;
+        statistics::Scalar pwcMisses;
+        statistics::Scalar pwcInsertions;
+        statistics::Scalar pwcInvalidations;
+
+        // Neighbour PWC stats (final-level neighbour entries)
+        statistics::Scalar pwc2Accesses;
+        statistics::Scalar pwc2Hits;
+        statistics::Scalar pwc2Misses;
+        statistics::Scalar pwc2Insertions;
+        statistics::Scalar pwc2Invalidations;
+        statistics::Scalar pwc2InvalidNeighboursSkipped;
+    } stats;
+
   public:
     void
     setTLB(GpuTLB *_tlb)
@@ -232,19 +287,46 @@ class Walker : public ClockedObject
     }
 
     Walker(const VegaPagetableWalkerParams &p)
-        : ClockedObject(p),
-          pwc(name() + ".pwc", p.page_walk_cache_entries,
-              p.page_walk_cache_entries, p.pwc_replacement_policy,
-              p.pwc_indexing_policy),
-          port(name() + ".port", this),
-          funcState(this, nullptr, true),
-          enable_pwc(p.enable_pwc),
-          tlb(nullptr),
-          requestorId(p.system->getRequestorId(this)),
-          deviceRequestorId(999),
-          system(p.system)
+      : ClockedObject(p),
+        pwc(name()+".pwc", p.page_walk_cache_entries,
+            p.page_walk_cache_entries, p.pwc_replacement_policy,
+            p.pwc_indexing_policy),
+        neighbourPwc(name()+".neighbourPwc", p.neighbour_pwc_entries,
+            p.neighbour_pwc_entries, p.neighbour_pwc_replacement_policy,
+            p.neighbour_pwc_indexing_policy),
+        port(name() + ".port", this),
+        pwcFetchBytes(p.pwc_fetch_bytes),
+        pwcFetchEntries(p.pwc_fetch_bytes / sizeof(uint64_t)),
+        funcState(this, nullptr, true),
+        enable_pwc(p.enable_pwc),
+	tlb(nullptr),
+        requestorId(p.system->getRequestorId(this)),
+        deviceRequestorId(999),
+        system(p.system),
+        stats(this)
     {
-        DPRINTF(GPUPTWalker, "Walker::Walker %p\n", this);
+        fatal_if(pwcFetchBytes < sizeof(uint64_t),
+                 "VegaPagetableWalker pwc_fetch_bytes must be at least 8 "
+                 "bytes");
+        fatal_if(pwcFetchBytes % sizeof(uint64_t) != 0,
+                 "VegaPagetableWalker pwc_fetch_bytes must be divisible "
+                 "by 8");
+        fatal_if((pwcFetchBytes & (pwcFetchBytes - 1)) != 0,
+                 "VegaPagetableWalker pwc_fetch_bytes must be a power "
+                 "of two");
+        fatal_if(pwcFetchBytes > MaxPwcFetchBytes,
+                 "VegaPagetableWalker pwc_fetch_bytes exceeds supported "
+                 "maximum of 1024 bytes");
+        fatal_if(pwcFetchBytes > system->cacheLineSize(),
+                 "VegaPagetableWalker pwc_fetch_bytes (%lu) exceeds the "
+                 "system cache-line size (%lu)", pwcFetchBytes,
+                 system->cacheLineSize());
+        fatal_if(pwcFetchEntries > MaxPwcFetchEntries,
+                 "VegaPagetableWalker pwc_fetch_entries exceeds supported "
+                 "maximum");
+
+        DPRINTF(GPUPTWalker, "Walker::Walker %p fetchBytes %lu "
+                "fetchEntries %u\n", this, pwcFetchBytes, pwcFetchEntries);
     }
 };
 
