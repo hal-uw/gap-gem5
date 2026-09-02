@@ -1782,7 +1782,9 @@ struct InFmt_DS
     unsigned int OFFSET1 : 8;
     unsigned int GDS : 1;
     unsigned int OP : 8;
-    unsigned int pad_25 : 1;
+    // CDNA ACC selects the AGPR bank for DS data registers. ADDR remains
+    // a VGPR.
+    unsigned int ACC : 1;
     unsigned int ENCODING : 6;
 };
 
