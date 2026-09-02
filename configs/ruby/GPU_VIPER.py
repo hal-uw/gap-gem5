@@ -275,6 +275,50 @@ class SQCCntrl(GPU_VIPER_SQC_Controller, CntrlBase):
             self.recycle_latency = options.recycle_latency
 
 
+class ScalarCache(RubyCache):
+    dataArrayBanks = 8
+    tagArrayBanks = 8
+    dataAccessLatency = 1
+    tagAccessLatency = 1
+
+    def create(self, options):
+        self.size = MemorySize(options.scalar_size)
+        self.assoc = options.scalar_assoc
+        if hasattr(options, "sqc_rp"):
+            self.replacement_policy = ObjectList.rp_list.get(options.sqc_rp)()
+
+
+class ScalarCntrl(GPU_VIPER_SQC_Controller, CntrlBase):
+    def create(self, options, ruby_system, system):
+        # Scalar and SQC controllers share MachineType:SQC, so their
+        # controller version IDs must come from the same counter.
+        self.version = SQCCntrl.versionCount()
+
+        self.L1cache = ScalarCache()
+        self.L1cache.create(options)
+        self.L1cache.resourceStalls = options.no_resource_stalls
+
+        self.sequencer = VIPERSequencer()
+
+        self.sequencer.version = self.seqCount()
+        self.sequencer.dcache = self.L1cache
+        self.sequencer.ruby_system = ruby_system
+        self.sequencer.support_data_reqs = False
+        self.sequencer.is_cpu_sequencer = False
+        if options.sqc_deadlock_threshold:
+            self.sequencer.deadlock_threshold = options.sqc_deadlock_threshold
+
+        self.ruby_system = ruby_system
+        if hasattr(options, "gpu_clock") and hasattr(options, "gpu_voltage"):
+            self.clk_domain = SrcClockDomain(
+                clock=options.gpu_clock,
+                voltage_domain=VoltageDomain(voltage=options.gpu_voltage),
+            )
+
+        if options.recycle_latency:
+            self.recycle_latency = options.recycle_latency
+
+
 class TCC(RubyCache):
     size = MemorySize("256KiB")
     assoc = 16
@@ -451,6 +495,12 @@ def define_options(parser):
     )
     parser.add_argument(
         "--sqc-assoc", type=int, default=8, help="SQC cache assoc"
+    )
+    parser.add_argument(
+        "--scalar-size", type=str, default="32KiB", help="Scalar cache size"
+    )
+    parser.add_argument(
+        "--scalar-assoc", type=int, default=8, help="Scalar cache assoc"
     )
     parser.add_argument(
         "--sqc-deadlock-threshold",
@@ -872,7 +922,7 @@ def construct_scalars(options, system, ruby_system, network):
     TCC_bits = int(math.log(options.num_tccs, 2))
 
     for i in range(options.num_scalar_cache):
-        scalar_cntrl = SQCCntrl(TCC_select_num_bits=TCC_bits)
+        scalar_cntrl = ScalarCntrl(TCC_select_num_bits=TCC_bits)
         scalar_cntrl.create(options, ruby_system, system)
 
         exec("ruby_system.scalar_cntrl%d = scalar_cntrl" % i)
