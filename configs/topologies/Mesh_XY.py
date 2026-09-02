@@ -49,7 +49,11 @@ class Mesh_XY(SimpleTopology):
     def makeTopology(self, options, network, IntLink, ExtLink, Router):
         nodes = self.nodes
 
-        num_routers = options.num_cpus
+        # Allow --gpu-mesh-routers to override --num-cpus for the router count
+        # so that the GPU mesh size is independent of the CPU core count.
+        num_routers = (
+            getattr(options, "gpu_mesh_routers", 0) or options.num_cpus
+        )
         num_rows = options.mesh_rows
 
         # default values for link latency and router latency.
@@ -99,10 +103,8 @@ class Mesh_XY(SimpleTopology):
             )
             link_count += 1
 
-        # Connect the remainding nodes to router 0.  These should only be
-        # DMA nodes.
+        # Connect the remaining nodes to router 0.
         for i, node in enumerate(remainder_nodes):
-            assert node.type == "DMA_Controller"
             assert i < remainder
             ext_links.append(
                 ExtLink(

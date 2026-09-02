@@ -27,12 +27,13 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+from copy import copy
 from importlib import *
-
-from network import Network
 
 from m5.objects import *
 from m5.util import fatal
+
+from network import Network as NetworkConfig
 
 
 class DisjointSimple(SimpleNetwork):
@@ -87,7 +88,13 @@ class DisjointGarnet(GarnetNetwork):
             opts, self, GarnetIntLink, GarnetExtLink, GarnetRouter
         )
 
-        Network.init_network(opts, self, GarnetNetworkInterface)
+        # The CPU network uses its own topology (typically CrossbarGarnet),
+        # whose router count is unrelated to the GPU mesh dimensions. Use a
+        # private options copy so CPU initialization does not consume or
+        # modify the GPU mesh configuration.
+        cpu_opts = copy(opts)
+        cpu_opts.mesh_rows = 0
+        NetworkConfig.init_network(cpu_opts, self, GarnetNetworkInterface)
 
     def connectGPU(self, opts, controllers):
         # Setup parameters for makeTopology call
@@ -98,4 +105,4 @@ class DisjointGarnet(GarnetNetwork):
             opts, self, GarnetIntLink, GarnetExtLink, GarnetRouter
         )
 
-        Network.init_network(opts, self, GarnetNetworkInterface)
+        NetworkConfig.init_network(opts, self, GarnetNetworkInterface)
