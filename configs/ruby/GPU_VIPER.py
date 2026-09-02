@@ -98,7 +98,7 @@ class L2Cache(RubyCache):
     def create(self, size, assoc, options):
         self.size = MemorySize(size)
         self.assoc = assoc
-        self.replacement_policy = TreePLRURP()
+        self.replacement_policy = BRRIPRP()
 
 
 class CPCntrl(GPU_VIPER_CorePair_Controller, CntrlBase):
@@ -336,18 +336,21 @@ class L3Cache(RubyCache):
     dataArrayBanks = 16
     tagArrayBanks = 16
 
-    def create(self, options, ruby_system, system):
+    def create(self, options, ruby_system, system, num_dirs=None):
+        # num_dirs: number of directory controllers sharing this L3 pool.
+        # Defaults to options.num_dirs (CPU-side) if not specified.
+        if num_dirs is None:
+            num_dirs = options.num_dirs
         self.size = MemorySize(options.l3_size)
-        self.size.value /= options.num_dirs
+        self.size.value /= num_dirs
         self.assoc = options.l3_assoc
-        self.dataArrayBanks /= options.num_dirs
-        self.tagArrayBanks /= options.num_dirs
-        self.dataArrayBanks /= options.num_dirs
-        self.tagArrayBanks /= options.num_dirs
+        # Distribute banks evenly across directory controllers
+        self.dataArrayBanks /= num_dirs
+        self.tagArrayBanks /= num_dirs
         self.dataAccessLatency = options.l3_data_latency
         self.tagAccessLatency = options.l3_tag_latency
         self.resourceStalls = False
-        self.replacement_policy = TreePLRURP()
+        self.replacement_policy = BRRIPRP()
 
 
 class L3Cntrl(GPU_VIPER_L3Cache_Controller, CntrlBase):
@@ -382,7 +385,7 @@ class L3Cntrl(GPU_VIPER_L3Cache_Controller, CntrlBase):
 
 
 class DirCntrl(GPU_VIPER_Directory_Controller, CntrlBase):
-    def create(self, options, dir_ranges, ruby_system, system):
+    def create(self, options, dir_ranges, ruby_system, system, num_dirs=None):
         self.version = self.versionCount()
 
         self.response_latency = 30
@@ -393,7 +396,8 @@ class DirCntrl(GPU_VIPER_Directory_Controller, CntrlBase):
         )
 
         self.L3CacheMemory = L3Cache()
-        self.L3CacheMemory.create(options, ruby_system, system)
+        self.L3CacheMemory.create(options, ruby_system, system,
+                                  num_dirs=num_dirs)
 
         self.l3_hit_latency = max(
             self.L3CacheMemory.dataAccessLatency,
@@ -438,6 +442,13 @@ def define_options(parser):
         "--no-tcc-resource-stalls", action="store_false", default=True
     )
     parser.add_argument("--use-L3-on-WT", action="store_true", default=False)
+    parser.add_argument("--use-gpu-l3", action="store_true", default=False,
+                        help="Enable L3 (Infinity Cache) fills for GPU "
+                             "directory controllers")
+    parser.add_argument("--l3-exclusive", action="store_true", default=False,
+                        help="Experimental non-CDNA3 victim-cache policy: "
+                             "GPU reads consume L3 entries and fills occur "
+                             "from lower-level evictions")
     parser.add_argument("--num-tbes", type=int, default=256)
     parser.add_argument("--l2-latency", type=int, default=50)  # load to use
     parser.add_argument(
@@ -560,14 +571,14 @@ def construct_dirs(options, system, ruby_system, network):
     # For an odd number of CPUs, still create the right number of controllers
     TCC_bits = int(math.log(options.num_tccs, 2))
 
+    dir_bits = int(math.log(options.num_dirs, 2))
+    block_size_bits = int(math.log(options.cacheline_size, 2))
     if options.numa_high_bit:
         numa_bit = options.numa_high_bit
     else:
         # if the numa_bit is not specified, set the directory bits as the
         # lowest bits above the block offset bits, and the numa_bit as the
         # highest of those directory bits
-        dir_bits = int(math.log(options.num_dirs, 2))
-        block_size_bits = int(math.log(options.cacheline_size, 2))
         numa_bit = block_size_bits + dir_bits - 1
 
     for i in range(options.num_dirs):
@@ -584,6 +595,7 @@ def construct_dirs(options, system, ruby_system, network):
 
         dir_cntrl = DirCntrl(noTCCdir=True, TCC_select_num_bits=TCC_bits)
         dir_cntrl.create(options, dir_ranges, ruby_system, system)
+        dir_cntrl.L3CacheMemory.start_index_bit = block_size_bits + dir_bits
         dir_cntrl.number_of_TBEs = options.num_tbes
         dir_cntrl.useL3OnWT = options.use_L3_on_WT
         dir_cntrl.L2isWB = options.WB_L2
@@ -651,9 +663,13 @@ def construct_gpudirs(options, system, ruby_system, network):
             TCC_select_num_bits=TCC_bits,
             clk_domain=system.fabric_clk,
         )
-        dir_cntrl.create(options, [addr_range], ruby_system, system)
+        dir_cntrl.create(options, [addr_range], ruby_system, system,
+                         num_dirs=options.dgpu_num_dirs)
+        dir_cntrl.L3CacheMemory.start_index_bit = block_size_bits + dir_bits
         dir_cntrl.number_of_TBEs = options.num_tbes
-        dir_cntrl.useL3OnWT = False
+        dir_cntrl.GPUonly = True
+        dir_cntrl.useL3OnWT = options.use_gpu_l3
+        dir_cntrl.L3Exclusive = options.l3_exclusive
         dir_cntrl.L2isWB = options.WB_L2
 
         # Connect the Directory controller to the ruby network
