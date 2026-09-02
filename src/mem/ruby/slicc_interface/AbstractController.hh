@@ -56,6 +56,7 @@
 #include "mem/ruby/common/DataBlock.hh"
 #include "mem/ruby/common/Histogram.hh"
 #include "mem/ruby/common/MachineID.hh"
+#include "mem/ruby/common/NetDest.hh"
 #include "mem/ruby/network/MessageBuffer.hh"
 #include "mem/ruby/protocol/AccessPermission.hh"
 #include "mem/ruby/system/CacheRecorder.hh"
@@ -492,6 +493,9 @@ class AbstractController : public ClockedObject, public Consumer
     // Formerly in RubySlicc_ComponentMapping.hh. Moved here to access
     // RubySystem pointer.
     NetDest broadcast(MachineType type);
+    NetDest mapAddressToRangeAcrossClusters(
+        Addr addr, MachineType type, int low_bit, int num_bits,
+        int num_clusters);
     int machineCount(MachineType machType);
 
   private:

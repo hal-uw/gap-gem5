@@ -43,6 +43,7 @@
 #include "debug/RubyQueue.hh"
 #include "mem/ruby/network/Network.hh"
 #include "mem/ruby/protocol/MemoryMsg.hh"
+#include "mem/ruby/slicc_interface/RubySlicc_ComponentMapping.hh"
 #include "mem/ruby/system/RubySystem.hh"
 #include "mem/ruby/system/Sequencer.hh"
 #include "sim/system.hh"
@@ -514,6 +515,25 @@ AbstractController::broadcast(MachineType type)
     NetDest dest(m_ruby_system);
     for (NodeID i = 0; i < type_count; i++) {
         MachineID mach = {type, i};
+        dest.add(mach);
+    }
+    return dest;
+}
+
+NetDest
+AbstractController::mapAddressToRangeAcrossClusters(
+    Addr addr, MachineType type, int low_bit, int num_bits,
+    int num_clusters)
+{
+    assert(m_ruby_system != nullptr);
+    assert(num_clusters > 0);
+
+    const NodeID type_count = m_ruby_system->MachineType_base_count(type);
+    NetDest dest(m_ruby_system);
+    for (int cluster_id = 0; cluster_id < num_clusters; ++cluster_id) {
+        const MachineID mach = mapAddressToRange(
+            addr, type, low_bit, num_bits, cluster_id);
+        assert(mach.num < type_count);
         dest.add(mach);
     }
     return dest;
