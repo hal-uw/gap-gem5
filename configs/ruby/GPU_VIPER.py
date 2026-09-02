@@ -295,10 +295,8 @@ class TCC(RubyCache):
             self.tagArrayBanks = 64
         else:
             self.size = MemorySize(options.tcc_size)
-            self.dataArrayBanks = (
-                256 / options.num_tccs
-            )  # number of data banks
-            self.tagArrayBanks = 256 / options.num_tccs  # number of tag banks
+            self.dataArrayBanks = options.tcc_num_banks  # number of data banks
+            self.tagArrayBanks = options.tcc_num_banks  # number of tag banks
         self.size.value = self.size.value / options.num_tccs
         if (self.size.value / int(self.assoc)) < 128:
             self.size.value = int(128 * self.assoc)
@@ -344,9 +342,11 @@ class L3Cache(RubyCache):
         self.size = MemorySize(options.l3_size)
         self.size.value /= num_dirs
         self.assoc = options.l3_assoc
-        # Distribute banks evenly across directory controllers
-        self.dataArrayBanks /= num_dirs
-        self.tagArrayBanks /= num_dirs
+        # Each directory controller owns one L3 slice. Configure the internal
+        # data and tag bank count of that slice independently of the number of
+        # directory controllers.
+        self.dataArrayBanks = options.l3_num_banks
+        self.tagArrayBanks = options.l3_num_banks
         self.dataAccessLatency = options.l3_data_latency
         self.tagAccessLatency = options.l3_tag_latency
         self.resourceStalls = False
@@ -433,6 +433,12 @@ def define_options(parser):
     parser.add_argument("--tcp-issue-latency", type=int, default=1)
     parser.add_argument("--l3-data-latency", type=int, default=20)
     parser.add_argument("--l3-tag-latency", type=int, default=15)
+    parser.add_argument(
+        "--l3-num-banks",
+        type=int,
+        default=16,
+        help="Number of data and tag banks in each directory L3 slice",
+    )
     parser.add_argument("--cpu-to-dir-latency", type=int, default=120)
     parser.add_argument("--gpu-to-dir-latency", type=int, default=120)
     parser.add_argument(
