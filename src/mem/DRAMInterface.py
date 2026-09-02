@@ -1258,6 +1258,146 @@ class HBM_2000_4H_1x64(DRAMInterface):
     two_cycle_activate = True
 
 
+class HBM3_MI300X_1x64(DRAMInterface):
+    # MI300X-oriented HBM3 channel interface. It maps one 64-bit HBM3 channel
+    # onto one side of gem5's two-interface HBMCtrl. MI300X has eight HBM3
+    # stacks, each exposing 16 x64 channels, for 128 channels in total.
+    #
+    # This keeps the legacy gem5 HBM controller shape while setting the
+    # rate/capacity from AMD's public MI300X data sheet:
+    # (https://www.amd.com/content/dam/amd/en/documents/instinct-tech-docs/data-sheets/amd-instinct-mi300x-data-sheet.pdf)
+    #   AMD Instinct MI300X Accelerator data sheet:
+    #   memory capacity: 192GB HBM3
+    #   memory bandwidth: 5.3TB/s max peak theoretical
+    #   memory interface: 8192 bits
+    #   memory clock: up to 5.2GT/s
+    #
+    # Timing values not published in the AMD data sheet are derived from the
+    # Ramulator 2.1.0 HBM3 model:
+    # https://github.com/CMU-SAFARI/ramulator2/blob/main/python/ramulator/dram/hbm3.py
+    #   org preset:    HBM3_16Gb_8hi
+    #   timing preset: HBM3_6400Mbps
+    # (MI300X is 12-high 16Gb; Ramulator has no 12-high org, so anchor to
+    # the 16Gb-die preset and set capacity via device_size below.)
+    #
+    # Clock domains. tCK/tBURST use gem5's data/2 burst clock (fixes 5.2GT/s
+    # bandwidth); command-spacing timings (tRP, tRCD, ...) are Ramulator nCK
+    # counts scaled by the CA-clock period tCK_CA = 4/5.2GT/s = 0.769231ns =
+    # 2*tCK. Scaling by tCK instead would halve every latency (non-physical).
+    #
+    # Using the MI300X 5.2 GT/s CA clock (vs the 6.4 GT/s Ramulator reference)
+    # is conservative: the slower clock stretches each cycle by 6.4/5.2.
+
+    device_bus_width = 64
+
+    burst_length = 8
+
+    # AMD MI300X data sheet: 192GB HBM3. 192 GiB / 128 pseudo-channels
+    # = 1.5 GiB per pseudo-channel.
+    device_size = "1536MiB"
+
+    # Row buffer is halved for the pseudo-channel: 2 KiB / 2 = 1 KiB.
+    device_rowbuffer_size = "1KiB"
+
+    # One x64 device supplies this modeled channel.
+    devices_per_rank = 1
+
+    # HBM-style stack interface, modelled as one rank like the existing HBM
+    # classes in gem5.
+    ranks_per_channel = 1
+
+    # Ramulator HBM3_16Gb_8hi: sid=2, bankgroup=4, bank=4. gem5 lacks Sid,
+    # so flatten Sid into banks: 2 * 4 * 4 = 32 banks.
+    banks_per_rank = 32
+    # Ramulator HBM3_16Gb_8hi: bankgroup=4.
+    bank_groups_per_rank = 4
+
+    # AMD MI300X data sheet: memory clock up to 5.2GT/s. tCK is gem5's data/2
+    # burst clock: tCK = 2 / 5.2GT/s = 0.384615ns. The CA-clock period used to
+    # scale command-spacing timings below is tCK_CA = 4 / 5.2GT/s = 2 * tCK.
+    tCK = "0.384615ns"
+
+    # Ramulator HBM3_6400Mbps: nRP=26 CK. Scaled by tCK_CA.
+    tRP = "20ns"
+
+    # Ramulator HBM3_6400Mbps: nRCDRD=31 CK, nRCDWR=15 CK. Scaled by tCK_CA.
+    tRCD = "23.846154ns"
+    tRCD_WR = "11.538462ns"
+
+    # Ramulator HBM3_6400Mbps: nCL=20 CK, nCWL=10 CK. Scaled by tCK_CA.
+    tCL = "15.384615ns"
+    tCWL = "7.692308ns"
+
+    # Ramulator HBM3_6400Mbps: nRAS=45 CK. Scaled by tCK_CA.
+    tRAS = "34.615385ns"
+
+    # BL8 burst occupancy at tCK=0.384615ns: 4 * tCK. Delivers the MI300X
+    # 41.6 GB/s/pseudo-channel (64B burst / 1.538462ns = 5.2GT/s * 64bit).
+    tBURST = "1.538462ns"
+
+    # Ramulator HBM3 resolves all-bank refresh from channel density
+    # (channel_density = die_density / sid). For the MI300X 16Gb-die stack
+    # (HBM3_16Gb_8hi: 16Gb / 2 = 8Gb channel density), Ramulator's
+    # _resolve_nRFC table gives tRFC = 350ns.
+    tRFC = "350ns"
+
+    # HBM3 refresh interval used by Ramulator HBM3 and the existing gem5 HBM
+    # classes.
+    tREFI = "3.9us"
+
+    # Ramulator HBM3_6400Mbps: nWR=33 CK. Scaled by tCK_CA.
+    tWR = "25.384615ns"
+
+    # Ramulator HBM3_6400Mbps: nRTP=9 CK. Scaled by tCK_CA.
+    tRTP = "6.923077ns"
+
+    # Ramulator HBM3_6400Mbps: nWTRS=7 CK, nWTRL=10 CK. Scaled by tCK_CA.
+    tWTR = "5.384615ns"
+    tWTR_L = "7.692308ns"
+
+    # Ramulator HBM3_6400Mbps: nRTW=20 CK. Scaled by tCK_CA.
+    tRTW = "15.384615ns"
+
+    # HBM-style single-rank interface, following gem5's existing HBM classes.
+    tCS = "0ns"
+
+    # Ramulator HBM3_6400Mbps: nCCDL=4 CK. Scaled by tCK_CA.
+    tCCD_L = "3.076923ns"
+    tCCD_L_WR = "3.076923ns"
+
+    # Ramulator HBM3_6400Mbps: nRRDS=4 CK, nRRDL=5 CK. Scaled by tCK_CA.
+    tRRD = "3.076923ns"
+    tRRD_L = "3.846154ns"
+
+    # Ramulator HBM3_6400Mbps: nFAW=24 CK and four activates per window.
+    # Scaled by tCK_CA.
+    tXAW = "18.461538ns"
+    activation_limit = 4
+
+    # Ramulator HBM3_6400Mbps: nPPD=2 CK. Scaled by tCK_CA.
+    tPPD = "1.538462ns"
+
+    # Ramulator HBM3 models ACT as a 1.5 CK row command. gem5 can only model
+    # two-cycle activate, so approximate the extra half CA cycle: 0.5 * tCK_CA.
+    two_cycle_activate = True
+    tAAD = "0.384615ns"
+
+    # Not published in the AMD MI300X data sheet; use a conservative
+    # HBM-style powerdown exit of 4 CA cycles (4 * tCK_CA).
+    tXP = "3.076923ns"
+
+    # Conservative self-refresh exit approximation: all-bank refresh plus
+    # powerdown exit (tRFC + tXP = 350 + 3.076923).
+    tXS = "353.076923ns"
+
+    # Existing gem5 HBM2 class uses close_adaptive for pseudo-channel HBM.
+    page_policy = "close_adaptive"
+
+    # Existing gem5 HBM2 pseudo-channel class uses 64-entry queues.
+    read_buffer_size = 64
+    write_buffer_size = 64
+
+
 # A single HBM3 x64 pseudo-channel interface, anchored to
 # JEDEC JESD238B.01 (April 2025). HBM3 introduces several
 # changes over HBM2 that this preset captures:
