@@ -585,12 +585,12 @@ FetchUnit::FetchBufDesc::decodeInsts()
 {
     assert(readPtr);
 
-    if (splitDecode()) {
+    if (!wavefront->stopFetch() && splitDecode()) {
         decodeSplitInst();
     }
 
     while (wavefront->instructionBuffer.size() < maxIbSize &&
-           hasFetchDataToProcess()) {
+           hasFetchDataToProcess() && !wavefront->stopFetch()) {
         if (splitDecode()) {
             decodeSplitInst();
         } else {
