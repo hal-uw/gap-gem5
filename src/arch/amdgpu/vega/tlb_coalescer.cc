@@ -31,6 +31,7 @@
 
 #include "arch/amdgpu/vega/tlb_coalescer.hh"
 
+#include <algorithm>
 #include <cstring>
 
 #include "arch/amdgpu/common/gpu_translation_state.hh"
@@ -53,6 +54,10 @@ VegaTLBCoalescer::VegaTLBCoalescer(const VegaTLBCoalescerParams &p)
       cleanupEvent([this] { processCleanupEvent(); },
                    "Cleanup issuedTranslationsTable hashmap", false,
                    Event::Maximum_Pri),
+      // Start the size predictor saturated toward 2 MiB (MSB clear), matching
+      // the previous hardcoded default_pgSize speculation.
+      sizePredictor(SizePredBits, 0),
+      downstreamTLB(p.downstream_tlb),
       tlb_level(p.tlb_level),
       maxDownstream(p.maxDownstream),
       numDownstream(0)
@@ -71,6 +76,85 @@ VegaTLBCoalescer::VegaTLBCoalescer(const VegaTLBCoalescerParams &p)
 
     default_pgSize = p.default_pgSize;
     potentialPagesize.insert(default_pgSize);
+    // Always consider the 4 KiB boundary as well. The issue-side reissue path
+    // keys mispredicted requests in issuedTranslationsTable at 4 KiB, so both
+    // the outstanding-page block check and updatePhysAddresses must probe the
+    // 4 KiB boundary even before any 4 KiB translation has returned.
+    potentialPagesize.insert(VegaISA::PageBytes);
+}
+
+void
+VegaTLBCoalescer::updateSizePredictor(Addr returned_pgsize)
+{
+    // 2 MiB (or larger) return -> bias toward 2 MiB (decrement);
+    // anything smaller -> bias toward 4 KiB (increment).
+    if (returned_pgsize >= default_pgSize) {
+        sizePredictor--;
+    } else {
+        sizePredictor++;
+    }
+}
+
+Addr
+VegaTLBCoalescer::predictedPageSize() const
+{
+    // MSB set -> predict 4 KiB, otherwise the large (default) page size.
+    const uint8_t msb = 1u << (SizePredBits - 1);
+    return (static_cast<uint8_t>(sizePredictor) & msb) ? VegaISA::PageBytes
+                                                       : default_pgSize;
+}
+
+Addr
+VegaTLBCoalescer::newGroupPageSize()
+{
+    Addr pg_size = predictedPageSize();
+    if (lineCoalesceEnabled()) {
+        pg_size *= LineGroupPages;
+        // The line granule becomes a key in issuedTranslationsTable, so the
+        // return-side finder and the outstanding-page block check must probe
+        // it too.
+        potentialPagesize.insert(pg_size);
+    }
+    return pg_size;
+}
+
+size_t
+VegaTLBCoalescer::coalescerFIFOEntries() const
+{
+    size_t entries = 0;
+    for (const auto &tick_entry : coalescerFIFO) {
+        entries += tick_entry.second.size();
+    }
+    return entries;
+}
+
+size_t
+VegaTLBCoalescer::issuedTranslationPackets() const
+{
+    size_t packets = 0;
+    for (const auto &entry : issuedTranslationsTable) {
+        packets += entry.second.size();
+    }
+    return packets;
+}
+
+void
+VegaTLBCoalescer::updateOccupancyStats()
+{
+    const size_t fifo_entries = coalescerFIFOEntries();
+    if (fifo_entries > fifoMaxEntries.value()) {
+        fifoMaxEntries = fifo_entries;
+    }
+
+    const size_t issued_entries = issuedTranslationsTable.size();
+    if (issued_entries > issuedTranslationsMax.value()) {
+        issuedTranslationsMax = issued_entries;
+    }
+
+    const size_t issued_packets = issuedTranslationPackets();
+    if (issued_packets > issuedTranslationPacketsMax.value()) {
+        issuedTranslationPacketsMax = issued_packets;
+    }
 }
 
 Port &
@@ -161,60 +245,79 @@ VegaTLBCoalescer::updatePhysAddresses(PacketPtr pkt)
         *safe_cast<VegaISA::VegaTlbEntry *>(sender_state->tlbEntry);
     Addr first_entry_vaddr = tlb_entry.vaddr;
     Addr first_entry_paddr = tlb_entry.paddr;
-    int page_size = tlb_entry.size();
+    Addr page_size = tlb_entry.size();
 
-    potentialPagesize.insert(page_size);
+    // Clamp giant walker sizes before they become key granules; true
+    // page_size is still used for the range check and paddr computation.
+    potentialPagesize.insert(clampCoalescePageSize(page_size));
 
-    Addr virt_page_addr;
-
-    // Find coalesced translation request.
-    for (auto pgsize_seen : potentialPagesize) {
-        virt_page_addr = roundDown(pkt->req->getVaddr(), pgsize_seen);
-        if (issuedTranslationsTable.count(virt_page_addr) != 0) {
-            break;
-        }
-    }
-
-    DPRINTF(GPUTLB, "Update phys. addr. for %d \
-            coalesced reqs for page %#x\n",
-            issuedTranslationsTable[virt_page_addr].size(), virt_page_addr);
+    // Train future page-size speculation from the actual return size.
+    updateSizePredictor(page_size);
 
     bool uncacheable = tlb_entry.uncacheable();
     int first_hit_level = sender_state->hitLevel;
     bool is_system = pkt->req->systemReq();
 
-    for (int i = 0; i < issuedTranslationsTable[virt_page_addr].size(); ++i) {
-        PacketPtr local_pkt = issuedTranslationsTable[virt_page_addr][i];
+    // Save before responding; pkt may be recycled after sendTimingResp().
+    const Addr ret_vaddr = pkt->req->getVaddr();
+
+    // Find the outstanding bucket that actually contains this packet.
+    // Overlapping 2 MiB and 4 KiB buckets can both be live, so the key alone
+    // is ambiguous; packet identity disambiguates it.
+    Addr virt_page_addr = 0;
+    auto table_it = issuedTranslationsTable.end();
+    for (auto pgsize_seen : potentialPagesize) {
+        Addr loc_virt_page_addr = roundDown(ret_vaddr, pgsize_seen);
+        auto it = issuedTranslationsTable.find(loc_virt_page_addr);
+        if (it == issuedTranslationsTable.end()) {
+            continue;
+        }
+        if (std::find(it->second.begin(), it->second.end(), pkt) !=
+            it->second.end()) {
+            virt_page_addr = loc_virt_page_addr;
+            table_it = it;
+            break;
+        }
+    }
+
+    // A returned packet must belong to one outstanding bucket.
+    assert(table_it != issuedTranslationsTable.end());
+
+    // Copy the list since sends/reissues may mutate the table.
+    std::vector<PacketPtr> coalesced_pkts = table_it->second;
+
+    DPRINTF(GPUTLB, "Update phys. addr. for %d coalesced reqs for "
+            "page %#x\n", coalesced_pkts.size(), virt_page_addr);
+
+    for (int i = 0; i < coalesced_pkts.size(); ++i) {
+        PacketPtr local_pkt = coalesced_pkts[i];
 
         Addr local_pkt_vaddr = local_pkt->req->getVaddr();
 
-        // check if the pending req's vaddr matches the returned page,
-        // if not, reissue pending req as a 4k page
+        // Reissue packets outside the returned page at a clamped granule;
+        // range check uses the true page_size.
         if (!(first_entry_vaddr <= local_pkt_vaddr &&
               local_pkt_vaddr < first_entry_vaddr + page_size)) {
-            reissue_pkt_helper(local_pkt);
+            reissue_pkt_helper(local_pkt, clampCoalescePageSize(page_size));
             continue;
         }
 
-        GpuTranslationState *sender_state =
+        GpuTranslationState *local_sender_state =
             safe_cast<GpuTranslationState *>(local_pkt->senderState);
 
         // we are sending the packet back, so pop the reqCnt associated
-        // with this level in the TLB hierarchy
-        if (!sender_state->isPrefetch) {
-            sender_state->reqCnt.pop_back();
+        // with this level in the TLB hiearchy
+        if (!local_sender_state->isPrefetch) {
+            local_sender_state->reqCnt.pop_back();
             localCycles += curCycle();
         }
 
-        /*
-         * Only the first packet from this coalesced request has been
-         * translated. Grab the translated phys. page addr and update the
-         * physical addresses of the remaining packets with the appropriate
-         * page offsets.
-         */
-        if (i) {
+        // Only the returned packet already has its physical address.
+        // Every other coalesced packet needs to be filled in from the returned page + offset.
+        // Use pointer identity instead of the loop index so this stays correct regardless of the packet's position in the bucket.
+        if (local_pkt != pkt) {
             Addr paddr = first_entry_paddr +
-                         (local_pkt->req->getVaddr() & (page_size - 1));
+                         (local_pkt_vaddr & (page_size - 1));
             local_pkt->req->setPaddr(paddr);
 
             if (uncacheable) {
@@ -223,26 +326,26 @@ VegaTLBCoalescer::updatePhysAddresses(PacketPtr pkt)
 
             // update senderState->tlbEntry, so we can insert
             // the correct TLBEentry in the TLBs above.
-
-            // auto p = sender_state->tc->getProcessPtr();
-            if (sender_state->tlbEntry == NULL) {
+            if (local_sender_state->tlbEntry == NULL) {
                 // not set by lower(l2) coalescer
-                sender_state->tlbEntry = new VegaISA::VegaTlbEntry(
-                    1 /* VMID TODO */, first_entry_vaddr, first_entry_paddr,
-                    tlb_entry.logBytes, tlb_entry.pte);
+                local_sender_state->tlbEntry =
+                    new VegaISA::VegaTlbEntry(
+                        1 /* VMID TODO */, first_entry_vaddr,
+                        first_entry_paddr, tlb_entry.logBytes,
+                        tlb_entry.pte);
             }
 
             // update the hitLevel for all uncoalesced reqs
             // so that each packet knows where it hit
             // (used for statistics in the CUs)
-            sender_state->hitLevel = first_hit_level;
+            local_sender_state->hitLevel = first_hit_level;
         }
 
         // Copy PTE system bit information to coalesced requests
         local_pkt->req->setSystemReq(is_system);
 
-        ResponsePort *return_port = sender_state->ports.back();
-        sender_state->ports.pop_back();
+        ResponsePort *return_port = local_sender_state->ports.back();
+        local_sender_state->ports.pop_back();
 
         // Translation is done - Convert to a response pkt if necessary and
         // send the translation back
@@ -265,9 +368,10 @@ VegaTLBCoalescer::updatePhysAddresses(PacketPtr pkt)
     }
 }
 
-// re-coalesce packet to 4k pages
+// Re-coalesce a packet after page-size speculation failed.
+// 2 MiB returns reissue remaining siblings at 2 MiB; otherwise use 4 KiB.
 void
-VegaTLBCoalescer::reissue_pkt_helper(PacketPtr pkt)
+VegaTLBCoalescer::reissue_pkt_helper(PacketPtr pkt, Addr reissue_pgsize)
 {
     // first packet of a coalesced request
     PacketPtr first_packet = nullptr;
@@ -278,6 +382,12 @@ VegaTLBCoalescer::reissue_pkt_helper(PacketPtr pkt)
 
     GpuTranslationState *sender_state =
         safe_cast<GpuTranslationState *>(pkt->senderState);
+
+    // Never key a group larger than the coalescer's max granule.
+    reissue_pgsize = clampCoalescePageSize(reissue_pgsize);
+
+    // Ensure return-side lookup probes this reissue size.
+    potentialPagesize.insert(reissue_pgsize);
 
     DPRINTF(GPUTLB, "Trying to re-issue req at tick: %llu, addr: %#x\n",
             sender_state->issueTime, pkt->req->getVaddr());
@@ -295,11 +405,11 @@ VegaTLBCoalescer::reissue_pkt_helper(PacketPtr pkt)
     // coalesced request with the same tick_index
     for (int i = 0; i < coalescedReq_cnt; ++i) {
         first_packet = coalescerFIFO[tick_index][i].first[0];
-        if (coalescerFIFO[tick_index][i].second != VegaISA::PageBytes) {
+        if (coalescerFIFO[tick_index][i].second != reissue_pgsize) {
             continue;
         }
 
-        if (canCoalesce(pkt, first_packet, VegaISA::PageBytes)) {
+        if (canCoalesce(pkt, first_packet, reissue_pgsize)) {
             coalescerFIFO[tick_index][i].first.push_back(pkt);
 
             DPRINTF(GPUTLB, "Coalesced re-issued req %i \
@@ -318,7 +428,7 @@ VegaTLBCoalescer::reissue_pkt_helper(PacketPtr pkt)
         std::vector<PacketPtr> new_array;
         new_array.push_back(pkt);
         coalescerFIFO[tick_index].push_back(
-            std::make_pair(new_array, VegaISA::PageBytes));
+            std::make_pair(new_array, reissue_pgsize));
 
         DPRINTF(GPUTLB,
                 "coalescerFIFO[%d] now has %d coalesced reqs after "
@@ -423,7 +533,7 @@ VegaTLBCoalescer::CpuSidePort::recvTimingReq(PacketPtr pkt)
         std::vector<PacketPtr> new_array;
         new_array.push_back(pkt);
         coalescer->coalescerFIFO[tick_index].push_back(
-            std::make_pair(new_array, coalescer->default_pgSize));
+            std::make_pair(new_array, coalescer->newGroupPageSize()));
 
         DPRINTF(GPUTLB,
                 "coalescerFIFO[%d] now has %d coalesced reqs after "
@@ -507,10 +617,12 @@ VegaTLBCoalescer::MemSidePort::recvTimingResp(PacketPtr pkt)
 void
 VegaTLBCoalescer::MemSidePort::recvReqRetry()
 {
-    // we've received a retry. Schedule a probeTLBEvent
+    coalescer->retryEvents++;
+
+    // we've receeived a retry. Schedule a probeTLBEvent
     if (!coalescer->probeTLBEvent.scheduled()) {
         coalescer->schedule(coalescer->probeTLBEvent,
-                            curTick() + coalescer->clockPeriod());
+                curTick() + coalescer->clockPeriod());
     }
 }
 
@@ -546,6 +658,8 @@ VegaTLBCoalescer::processProbeTLBEvent()
 
     if ((tlb_level == 1) && (availDownstreamSlots() == 0)) {
         DPRINTF(GPUTLB, "IssueProbeEvent - no downstream slots, bail out\n");
+        downstreamSlotBlocked++;
+        updateOccupancyStats();
         return;
     }
 
@@ -574,7 +688,7 @@ VegaTLBCoalescer::processProbeTLBEvent()
                                             iter->second[vector_index].second);
 
             // is there another outstanding request for the same page addr?
-            // consider all possible page size
+            // consider all possible page sizes already observed by the walker.
             int pending_reqs = 0;
             for (auto i_pgsize : potentialPagesize) {
                 pending_reqs += issuedTranslationsTable.count(
@@ -587,6 +701,11 @@ VegaTLBCoalescer::processProbeTLBEvent()
                         "page %#x\n",
                         virt_page_addr);
 
+                pendingBlockedProbes++;
+                pendingBlockedPackets +=
+                    iter->second[vector_index].first.size();
+                updateOccupancyStats();
+
                 ++vector_index;
                 continue;
             }
@@ -595,6 +714,9 @@ VegaTLBCoalescer::processProbeTLBEvent()
             if (!memSidePort[0]->sendTimingReq(first_packet)) {
                 DPRINTF(GPUTLB, "Failed to send TLB request for page %#x",
                         virt_page_addr);
+
+                sendTimingReqFailed++;
+                updateOccupancyStats();
 
                 // No need for a retries queue since we are already
                 // buffering the coalesced request in coalescerFIFO.
@@ -636,6 +758,8 @@ VegaTLBCoalescer::processProbeTLBEvent()
                 // copy coalescedReq to issuedTranslationsTable
                 issuedTranslationsTable[virt_page_addr] =
                     iter->second[vector_index].first;
+                probesIssued++;
+                updateOccupancyStats();
 
                 // erase the entry of this coalesced req
                 iter->second.erase(iter->second.begin() + vector_index);
@@ -679,13 +803,22 @@ VegaTLBCoalescer::processProbeTLBEvent()
 void
 VegaTLBCoalescer::processCleanupEvent()
 {
+    bool cleaned = false;
+
     while (!cleanupQueue.empty()) {
         Addr cleanup_addr = cleanupQueue.front();
         cleanupQueue.pop();
         issuedTranslationsTable.erase(cleanup_addr);
+        cleanupEntries++;
+        cleaned = true;
+        updateOccupancyStats();
 
         DPRINTF(GPUTLB, "Cleanup - Delete coalescer entry with key %#x\n",
                 cleanup_addr);
+    }
+
+    if (cleaned && !coalescerFIFO.empty() && !probeTLBEvent.scheduled()) {
+        schedule(probeTLBEvent, cyclesToTicks(curCycle() + Cycles(1)));
     }
 }
 
@@ -708,6 +841,36 @@ VegaTLBCoalescer::regStats()
 
     localCycles.name(name() + ".local_cycles")
         .desc("Number of cycles spent in queue for all incoming reqs");
+
+    pendingBlockedProbes.name(name() + ".pending_blocked_probes")
+        .desc("Probe attempts blocked by an overlapping outstanding translation");
+
+    pendingBlockedPackets.name(name() + ".pending_blocked_packets")
+        .desc("Buffered packets in probe attempts blocked by an overlapping outstanding translation");
+
+    downstreamSlotBlocked.name(name() + ".downstream_slot_blocked")
+        .desc("Probe event invocations blocked by downstream slot exhaustion");
+
+    sendTimingReqFailed.name(name() + ".send_timing_req_failed")
+        .desc("TLB probe sends rejected by the downstream port");
+
+    probesIssued.name(name() + ".probes_issued")
+        .desc("Coalesced translation probes issued downstream");
+
+    cleanupEntries.name(name() + ".cleanup_entries")
+        .desc("Outstanding translation entries cleaned up after response");
+
+    retryEvents.name(name() + ".retry_events")
+        .desc("Request retry callbacks from downstream TLB port");
+
+    fifoMaxEntries.name(name() + ".fifo_max_entries")
+        .desc("Maximum number of coalesced requests buffered in the FIFO");
+
+    issuedTranslationsMax.name(name() + ".issued_translations_max")
+        .desc("Maximum number of outstanding translation table entries");
+
+    issuedTranslationPacketsMax.name(name() + ".issued_translation_packets_max")
+        .desc("Maximum number of packets represented by outstanding translations");
 
     localLatency.name(name() + ".local_latency")
         .desc("Avg. latency over all incoming pkts");

@@ -167,6 +167,15 @@ GpuTLB::insert(Addr vpn, VegaTlbEntry &entry)
 
     int set = getSet(entry.vaddr, entry.logBytes);
 
+    // Reuse an existing same-size page entry; duplicates can break shootdown.
+    auto existing = lookupIt(entry.vaddr, entry.logBytes, true);
+    if (existing != entryList[set].end()) {
+        DPRINTF(GPUTLB, "Reused existing %#lx -> %#lx of size %#lx in "
+                "set %d\n", (*existing)->vaddr, (*existing)->paddr,
+                (*existing)->size(), set);
+        return *existing;
+    }
+
     if (!freeList[set].empty()) {
         newEntry = freeList[set].front();
         freeList[set].pop_front();
@@ -176,7 +185,17 @@ GpuTLB::insert(Addr vpn, VegaTlbEntry &entry)
     }
 
     *newEntry = entry;
+
+    // Store a canonical page base for range checks.
+    newEntry->vaddr = newEntry->vaddr & ~mask(newEntry->logBytes);
+
     entryList[set].push_front(newEntry);
+
+    if (entry.logBytes == VegaISA::PageShift) {
+        stats.inserts4K++;
+    } else if (entry.logBytes == 21) {
+        stats.inserts2M++;
+    }
 
     DPRINTF(GPUTLB, "Inserted %#lx -> %#lx of size %#lx into set %d\n",
             newEntry->vaddr, newEntry->paddr, entry.size(), set);
@@ -197,12 +216,21 @@ GpuTLB::lookupIt(Addr va, unsigned int ps, bool update_lru)
     for (; entry != entryList[set].end(); ++entry) {
         int page_size = (*entry)->size();
 
-        if ((*entry)->vaddr <= va && (*entry)->vaddr + page_size > va &&
+        // Compare against the page-aligned base of the entry, not its raw
+        // vaddr. getSet() already aligns (it shifts va by the page size), but
+        // the range check below does not: if an entry was filled with a vaddr
+        // that is not aligned to its own page size, the raw comparison both
+        // rejects in-page addresses below (*entry)->vaddr and lets the range
+        // (*entry)->vaddr + page_size spill past the page boundary. Aligning
+        // here makes lookups correct regardless of how the fill was aligned.
+        Addr entry_base = (*entry)->vaddr & ~mask((*entry)->logBytes);
+
+        if (entry_base <= va && entry_base + page_size > va &&
             ps == (*entry)->logBytes) {
             DPRINTF(GPUTLB,
                     "Matched vaddr %#x to entry starting at %#x "
                     "with size %#x.\n",
-                    va, (*entry)->vaddr, page_size);
+                    va, entry_base, page_size);
 
             if (update_lru) {
                 entryList[set].push_front(*entry);
@@ -277,11 +305,10 @@ GpuTLB::tlbLookup(const RequestPtr &req, bool update_stats)
         return NULL;
     }
     Addr vaddr = req->getVaddr();
-    Addr alignedVaddr = pageAlign(vaddr);
     DPRINTF(GPUTLB, "TLB Lookup for vaddr %#x.\n", vaddr);
 
     // update LRU stack on a hit
-    VegaTlbEntry *entry = lookup(alignedVaddr, true);
+    VegaTlbEntry *entry = lookup(vaddr, true);
 
     if (!update_stats) {
         // functional tlb access for memory initialization
@@ -296,6 +323,11 @@ GpuTLB::tlbLookup(const RequestPtr &req, bool update_stats)
         stats.localNumTLBMisses++;
     } else {
         stats.localNumTLBHits++;
+        if (entry->logBytes == VegaISA::PageShift) {
+            stats.localHits4K++;
+        } else if (entry->logBytes == 21) {
+            stats.localHits2M++;
+        }
     }
 
     return entry;
@@ -358,6 +390,9 @@ GpuTLB::issueTLBLookup(PacketPtr pkt)
     if (entry || pkt->req->hasNoAddr()) {
         // Put the entry in SenderState
         lookup_outcome = TLB_HIT;
+        // A genuine hit in this TLB's entry array biases the line-coalescing
+        // predictor away from line prefetch (we are not missing here).
+        noteTlbHit();
         if (pkt->req->hasNoAddr()) {
             sender_state->tlbEntry =
                 new VegaTlbEntry(1 /* VMID */, 0, 0, 0, 0);
@@ -442,10 +477,17 @@ GpuTLB::pagingProtectionChecks(PacketPtr pkt, VegaTlbEntry *tlb_entry,
 }
 
 void
-GpuTLB::walkerResponse(VegaTlbEntry &entry, PacketPtr pkt)
+GpuTLB::walkerResponse(VegaTlbEntry &entry, PacketPtr pkt, bool from_pwc)
 {
     DPRINTF(GPUTLB, "WalkerResponse for %#lx. Entry: (%#lx, %#lx, %#lx)\n",
             pkt->req->getVaddr(), entry.vaddr, entry.paddr, entry.size());
+
+    // A walk that had to reach memory is a real TLB miss and biases the
+    // line-coalescing predictor toward line prefetch. A walk satisfied by the
+    // PWC/PWC2 deliberately does not count (neither hit nor miss).
+    if (!from_pwc) {
+        noteTlbMiss();
+    }
 
     Addr virt_page_addr = roundDown(pkt->req->getVaddr(), VegaISA::PageBytes);
 
@@ -457,6 +499,12 @@ GpuTLB::walkerResponse(VegaTlbEntry &entry, PacketPtr pkt)
     GpuTranslationState *sender_state =
         safe_cast<GpuTranslationState *>(pkt->senderState);
     sender_state->tlbEntry = new VegaTlbEntry(entry);
+
+    if (entry.logBytes == VegaISA::PageShift) {
+        stats.walkerReturns4K++;
+    } else if (entry.logBytes == 21) {
+        stats.walkerReturns2M++;
+    }
 
     handleTranslationReturn(virt_page_addr, TLB_MISS, pkt);
 }
@@ -623,8 +671,7 @@ GpuTLB::translationReturn(Addr virtPageAddr, tlbOutcome outcome, PacketPtr pkt)
             TLBEvent *tlb_event = translationReturnEvent[virtPageAddr];
             assert(tlb_event);
             tlb_event->updateOutcome(PAGE_WALK);
-            schedule(tlb_event,
-                     curTick() + cyclesToTicks(Cycles(missLatency2)));
+            schedule(tlb_event, curTick());
         }
     } else if (outcome == PAGE_WALK) {
         if (update_stats) {
@@ -996,8 +1043,14 @@ GpuTLB::VegaTLBStats::VegaTLBStats(statistics::Group *parent)
       ADD_STAT(accessCycles, "Cycles spent accessing this TLB level"),
       ADD_STAT(pageTableCycles, "Cycles spent accessing the page table"),
       ADD_STAT(localCycles, "Number of cycles spent in queue for all "
-                            "incoming reqs"),
-      ADD_STAT(localLatency, "Avg. latency over incoming coalesced reqs")
+                             "incoming reqs"),
+      ADD_STAT(localLatency, "Avg. latency over incoming coalesced reqs"),
+      ADD_STAT(inserts4K, "Number of 4 KiB entries inserted"),
+      ADD_STAT(inserts2M, "Number of 2 MiB entries inserted"),
+      ADD_STAT(localHits4K, "Number of local hits on 4 KiB entries"),
+      ADD_STAT(localHits2M, "Number of local hits on 2 MiB entries"),
+       ADD_STAT(walkerReturns4K, "Number of page walks returning 4 KiB entries"),
+       ADD_STAT(walkerReturns2M, "Number of page walks returning 2 MiB entries")
 {
     localTLBMissRate = 100 * localNumTLBMisses / localNumTLBAccesses;
     globalTLBMissRate = 100 * globalNumTLBMisses / globalNumTLBAccesses;
