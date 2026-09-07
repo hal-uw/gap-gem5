@@ -54,6 +54,8 @@ def makeGpuFSSystem(args):
         "drm_kms_helper.fbdev_emulation=0",
         "modprobe.blacklist=amdgpu",
         "modprobe.blacklist=psmouse",
+        "norandmaps",
+        "transparent_hugepage=always",
         # Tell linux to use MP table for PCI IRQs and not ACPI.
         "pci=noacpi",
     ]
