@@ -67,7 +67,7 @@ def tlb_options(parser):
     #   L2 TLB Options
     # ===================================================================
 
-    parser.add_argument("--L2TLBentries", type=int, default="4096")
+    parser.add_argument("--L2TLBentries", type=int, default="256")
     parser.add_argument("--L2TLBassoc", type=int, default="32")
     parser.add_argument(
         "--L2AccessLatency",
