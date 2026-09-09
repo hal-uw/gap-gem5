@@ -112,6 +112,8 @@ ComputeUnit::ComputeUnit(const Params &p)
                               p.clk_domain->clockPeriod()),
       scalar_resp_tick_latency(p.scalar_mem_resp_latency *
                                p.clk_domain->clockPeriod()),
+      lds_req_tick_latency(p.lds_req_latency *
+                              p.clk_domain->clockPeriod()),
       memtime_latency(p.memtime_latency * p.clk_domain->clockPeriod()),
       mfma_scale(p.mfma_scale),
       mfma_cycles(
@@ -2374,8 +2376,17 @@ ComputeUnit::sendToLds(GPUDynInstPtr gpuDynInst)
 
     // This is the SenderState needed upon return
     newPacket->senderState = new LDSPort::SenderState(gpuDynInst);
+    EventFunctionWrapper *lds_req_event = new EventFunctionWrapper(
+        [this, newPacket] {processLdsReqEvent(newPacket);},
+        "LDS request sent", true);
+    //return ldsPort.sendTimingReq(newPacket);
+    schedule(lds_req_event, curTick() + lds_req_tick_latency);
+    return true;
+}
 
-    return ldsPort.sendTimingReq(newPacket);
+void
+ComputeUnit::processLdsReqEvent(PacketPtr packet) {
+    ldsPort.sendTimingReq(packet);
 }
 
 /**

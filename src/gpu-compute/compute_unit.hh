@@ -358,6 +358,7 @@ class ComputeUnit : public ClockedObject
     Tick resp_tick_latency;
     Tick scalar_req_tick_latency;
     Tick scalar_resp_tick_latency;
+    Tick lds_req_tick_latency;
 
     Tick memtime_latency;
     float mfma_scale;
@@ -534,6 +535,8 @@ class ComputeUnit : public ClockedObject
     void sendInvL2(Addr paddr);
 
     void printProgress();
+
+    void processLdsReqEvent(PacketPtr pkt);
 
   protected:
     RequestorID _requestorId;
