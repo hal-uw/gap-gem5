@@ -65,16 +65,15 @@ dd if=/root/roms/mi300.rom of=/dev/mem bs=1k seek=768 count=128
 if [ -e /usr/lib/firmware/amdgpu/mi300_discovery ]; then
     rm -f /usr/lib/firmware/amdgpu/ip_discovery.bin
     ln -s /usr/lib/firmware/amdgpu/mi300_discovery /usr/lib/firmware/amdgpu/ip_discovery.bin
+    echo "Here"
 fi
 
 if [ -f /home/gem5/load_amdgpu.sh ]; then
     sh /home/gem5/load_amdgpu.sh
-elif [ ! -f /lib/modules/`uname -r`/updates/dkms/amdgpu.ko ]; then
-    echo "ERROR: Missing DKMS package for kernel `uname -r`. Exiting gem5."
-    # m5 exit
 else
-    # Backward compatibility with old disk images (ROCm 6.1)
-    modprobe -v amdgpu ip_block_mask=0x6f ppfeaturemask=0 dpm=0 audio=0 ras_enable=0 discovery=2
+    # develop support
+    echo "options amdgpu ip_block_mask=0x6f ppfeaturemask=0 dpm=0 audio=0 ras_enable=0 discovery=2" > /etc/modprobe.d/amdgpu.conf
+    modprobe -v amdgpu
 fi
 modprobe -v amdgpu ip_block_mask=0x6f ppfeaturemask=0 dpm=0 audio=0 ras_enable=0 discovery=2
 
@@ -175,7 +174,6 @@ def runMI300GPUFS(
     # See: https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch/mi300.html
     # Topology for one XCD. Number of CUs is approximately 304 / 8, rounded
     # up to 40 due to gem5 restriction of 4 CUs per SQC / scalar cache.
-    args.num_compute_units = 40
     args.gpu_topology = "Crossbar"
 
     # Run gem5

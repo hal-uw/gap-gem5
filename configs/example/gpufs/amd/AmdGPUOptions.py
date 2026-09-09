@@ -271,10 +271,31 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
+        "--vrf-gm-bus-latency",
+        type=int,
+        default=1,
+        help="Latency while accessing shared memory",
+    )
+
+    parser.add_argument(
+        "--srf-scm-bus-latency",
+        type=int,
+        default=1,
+        help="Latency while accessing shared memory",
+    )
+
+    parser.add_argument(
         "--max-cu-tokens",
         type=int,
         default=4,
         help="Number of coalescer tokens per CU",
+    )
+
+    parser.add_argument(
+        "--max-ib-size",
+        type=int,
+        default=13,
+        help="Instruction Buffer Size",
     )
 
     parser.add_argument(
@@ -296,6 +317,13 @@ def addAmdGPUOptions(parser):
         type=int,
         default=50,
         help="Latency for scalar requests from the cu to ruby.",
+    )
+
+    parser.add_argument(
+        "--lds-req-latency",
+        type=int,
+        default=50,
+        help="Latency for requests to lds.",
     )
 
     parser.add_argument(

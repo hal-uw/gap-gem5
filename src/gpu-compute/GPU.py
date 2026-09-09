@@ -204,6 +204,12 @@ class ComputeUnit(ClockedObject):
         "TCP and cu as well as TCP data array "
         "access. Specified in GPU clock cycles",
     )
+    lds_req_latency = Param.Int(
+        1,
+        "Latency for a local memory (LDS) request to be "
+        "admitted for bank-conflict processing after being "
+        "issued by the cu. Specified in GPU clock cycles",
+    )
     memtime_latency = Param.Int(
         41,
         "Latency for memtimes in scalar memory pipeline. "

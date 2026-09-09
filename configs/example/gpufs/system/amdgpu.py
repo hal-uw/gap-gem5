@@ -82,10 +82,13 @@ def createGPU(system, args):
                 memtime_latency=args.memtime_latency,
                 max_cu_tokens=args.max_cu_tokens,
                 vrf_lm_bus_latency=args.vrf_lm_bus_latency,
+                vrf_gm_bus_latency=args.vrf_gm_bus_latency,
+                srf_scm_bus_latency=args.srf_scm_bus_latency,
                 mem_req_latency=args.mem_req_latency,
                 mem_resp_latency=args.mem_resp_latency,
                 scalar_mem_req_latency=args.scalar_mem_req_latency,
                 scalar_mem_resp_latency=args.scalar_mem_resp_latency,
+                lds_req_latency=args.lds_req_latency,
                 mfma_scale=args.mfma_scale,
                 localDataStore=LdsState(
                     banks=args.numLdsBanks,
@@ -104,7 +107,12 @@ def createGPU(system, args):
         for j in range(args.simds_per_cu):
             for k in range(shader.n_wf):
                 wavefronts.append(
-                    Wavefront(simdId=j, wf_slot_id=k, wf_size=args.wf_size)
+                    Wavefront(
+                        simdId=j,
+                        wf_slot_id=k,
+                        wf_size=args.wf_size,
+                        max_ib_size=args.max_ib_size,
+                    )
                 )
 
             if args.reg_alloc_policy == "simple":
