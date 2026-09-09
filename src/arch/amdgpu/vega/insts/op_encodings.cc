@@ -1704,11 +1704,16 @@ Inst_FLAT::Inst_FLAT(InFmt_FLAT *iFmt, const std::string &opcode)
     extData = ((InFmt_FLAT_1 *)iFmt)[1];
     _srcLiteral = *reinterpret_cast<uint32_t *>(&iFmt[1]);
 
-    if (instData.GLC) {
+    // SC0 (legacy GLC) alone signals globally-coherent/bypass on pre-gfx940
+    // encodings. On gfx940+, SC1 (encoded at bit 25, unused pre-gfx940) also
+    // signals a CU-cache bypass -- e.g. Device/System scope loads and
+    // stores per the CDNA3 ISA guide's Load/Store Controls tables -- so
+    // check both bits rather than just SC0.
+    if (instData.SC1) {
         setFlag(GloballyCoherent);
     }
 
-    if (instData.SLC) {
+    if (instData.SC0 && instData.SC1) {
         setFlag(SystemCoherent);
     }
 } // Inst_FLAT
@@ -1916,8 +1921,16 @@ Inst_FLAT::generateGlobalScratchDisassembly()
         dis_stream << " offset:" << instData.OFFSET;
     }
 
-    if (instData.GLC) {
-        dis_stream << " glc";
+    if (instData.SC0) {
+        dis_stream << " sc0";
+    }
+
+    if (instData.NT) {
+        dis_stream << " nt";
+    }
+
+    if (instData.SC1) {
+        dis_stream << " sc1";
     }
 
     disassembly = dis_stream.str();

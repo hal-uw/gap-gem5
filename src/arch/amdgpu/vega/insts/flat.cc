@@ -1627,7 +1627,7 @@ Inst_FLAT__FLAT_ATOMIC_SWAP::Inst_FLAT__FLAT_ATOMIC_SWAP(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_swap")
 {
     setFlag(AtomicExch);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1668,7 +1668,7 @@ Inst_FLAT__FLAT_ATOMIC_CMPSWAP ::Inst_FLAT__FLAT_ATOMIC_CMPSWAP(
     : Inst_FLAT(iFmt, "flat_atomic_cmpswap")
 {
     setFlag(AtomicCAS);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1709,7 +1709,7 @@ Inst_FLAT__FLAT_ATOMIC_ADD::Inst_FLAT__FLAT_ATOMIC_ADD(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_add")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1748,7 +1748,7 @@ Inst_FLAT__FLAT_ATOMIC_SUB::Inst_FLAT__FLAT_ATOMIC_SUB(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_sub")
 {
     setFlag(AtomicSub);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1787,7 +1787,7 @@ Inst_FLAT__FLAT_ATOMIC_SMIN::Inst_FLAT__FLAT_ATOMIC_SMIN(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_smin")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1826,7 +1826,7 @@ Inst_FLAT__FLAT_ATOMIC_UMIN::Inst_FLAT__FLAT_ATOMIC_UMIN(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_umin")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1865,7 +1865,7 @@ Inst_FLAT__FLAT_ATOMIC_SMAX::Inst_FLAT__FLAT_ATOMIC_SMAX(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_smax")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1904,7 +1904,7 @@ Inst_FLAT__FLAT_ATOMIC_UMAX::Inst_FLAT__FLAT_ATOMIC_UMAX(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_umax")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1943,7 +1943,7 @@ Inst_FLAT__FLAT_ATOMIC_AND::Inst_FLAT__FLAT_ATOMIC_AND(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_and")
 {
     setFlag(AtomicAnd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -1982,7 +1982,7 @@ Inst_FLAT__FLAT_ATOMIC_OR::Inst_FLAT__FLAT_ATOMIC_OR(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_or")
 {
     setFlag(AtomicOr);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2022,7 +2022,7 @@ Inst_FLAT__FLAT_ATOMIC_XOR::Inst_FLAT__FLAT_ATOMIC_XOR(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_xor")
 {
     setFlag(AtomicXor);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2061,7 +2061,7 @@ Inst_FLAT__FLAT_ATOMIC_INC::Inst_FLAT__FLAT_ATOMIC_INC(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_inc")
 {
     setFlag(AtomicInc);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2100,7 +2100,7 @@ Inst_FLAT__FLAT_ATOMIC_DEC::Inst_FLAT__FLAT_ATOMIC_DEC(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_dec")
 {
     setFlag(AtomicDec);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2140,7 +2140,7 @@ Inst_FLAT__FLAT_ATOMIC_SWAP_X2::Inst_FLAT__FLAT_ATOMIC_SWAP_X2(
     : Inst_FLAT(iFmt, "flat_atomic_swap_x2")
 {
     setFlag(AtomicExch);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2180,7 +2180,7 @@ Inst_FLAT__FLAT_ATOMIC_CMPSWAP_X2::Inst_FLAT__FLAT_ATOMIC_CMPSWAP_X2(
     : Inst_FLAT(iFmt, "flat_atomic_cmpswap_x2")
 {
     setFlag(AtomicCAS);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2221,7 +2221,7 @@ Inst_FLAT__FLAT_ATOMIC_ADD_X2::Inst_FLAT__FLAT_ATOMIC_ADD_X2(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_add_x2")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2260,7 +2260,7 @@ Inst_FLAT__FLAT_ATOMIC_SUB_X2::Inst_FLAT__FLAT_ATOMIC_SUB_X2(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_sub_x2")
 {
     setFlag(AtomicSub);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2300,7 +2300,7 @@ Inst_FLAT__FLAT_ATOMIC_SMIN_X2::Inst_FLAT__FLAT_ATOMIC_SMIN_X2(
     : Inst_FLAT(iFmt, "flat_atomic_smin_x2")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2340,7 +2340,7 @@ Inst_FLAT__FLAT_ATOMIC_UMIN_X2::Inst_FLAT__FLAT_ATOMIC_UMIN_X2(
     : Inst_FLAT(iFmt, "flat_atomic_umin_x2")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2380,7 +2380,7 @@ Inst_FLAT__FLAT_ATOMIC_SMAX_X2::Inst_FLAT__FLAT_ATOMIC_SMAX_X2(
     : Inst_FLAT(iFmt, "flat_atomic_smax_x2")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2420,7 +2420,7 @@ Inst_FLAT__FLAT_ATOMIC_UMAX_X2::Inst_FLAT__FLAT_ATOMIC_UMAX_X2(
     : Inst_FLAT(iFmt, "flat_atomic_umax_x2")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2459,7 +2459,7 @@ Inst_FLAT__FLAT_ATOMIC_AND_X2::Inst_FLAT__FLAT_ATOMIC_AND_X2(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_and_x2")
 {
     setFlag(AtomicAnd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2498,7 +2498,7 @@ Inst_FLAT__FLAT_ATOMIC_OR_X2::Inst_FLAT__FLAT_ATOMIC_OR_X2(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_or_x2")
 {
     setFlag(AtomicOr);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2537,7 +2537,7 @@ Inst_FLAT__FLAT_ATOMIC_XOR_X2::Inst_FLAT__FLAT_ATOMIC_XOR_X2(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_xor_x2")
 {
     setFlag(AtomicXor);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2576,7 +2576,7 @@ Inst_FLAT__FLAT_ATOMIC_INC_X2::Inst_FLAT__FLAT_ATOMIC_INC_X2(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_inc_x2")
 {
     setFlag(AtomicInc);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2615,7 +2615,7 @@ Inst_FLAT__FLAT_ATOMIC_DEC_X2::Inst_FLAT__FLAT_ATOMIC_DEC_X2(InFmt_FLAT *iFmt)
     : Inst_FLAT(iFmt, "flat_atomic_dec_x2")
 {
     setFlag(AtomicDec);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2656,7 +2656,7 @@ Inst_FLAT__FLAT_ATOMIC_ADD_F32::Inst_FLAT__FLAT_ATOMIC_ADD_F32(
     : Inst_FLAT(iFmt, "flat_atomic_add_f32")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2691,7 +2691,7 @@ Inst_FLAT__FLAT_ATOMIC_PK_ADD_F16::Inst_FLAT__FLAT_ATOMIC_PK_ADD_F16(
     : Inst_FLAT(iFmt, "flat_atomic_pk_add_f16")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2722,7 +2722,7 @@ Inst_FLAT__FLAT_ATOMIC_ADD_F64::Inst_FLAT__FLAT_ATOMIC_ADD_F64(
     : Inst_FLAT(iFmt, "flat_atomic_add_f64")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2757,7 +2757,7 @@ Inst_FLAT__FLAT_ATOMIC_MIN_F64::Inst_FLAT__FLAT_ATOMIC_MIN_F64(
     : Inst_FLAT(iFmt, "flat_atomic_min_f64")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2792,7 +2792,7 @@ Inst_FLAT__FLAT_ATOMIC_MAX_F64::Inst_FLAT__FLAT_ATOMIC_MAX_F64(
     : Inst_FLAT(iFmt, "flat_atomic_max_f64")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2829,7 +2829,7 @@ Inst_FLAT__FLAT_ATOMIC_PK_ADD_BF16::Inst_FLAT__FLAT_ATOMIC_PK_ADD_BF16(
     setFlag(AtomicPkAddBF16);
 
     // MI300 spec: "Float atomics must set SC[0]=0 (no return value)."
-    panic_if(instData.GLC, "Saw float atomic with return set!");
+    panic_if(instData.SC0, "Saw float atomic with return set!");
 
     setFlag(AtomicNoReturn);
 } // Inst_FLAT__FLAT_ATOMIC_PK_ADD_BF16

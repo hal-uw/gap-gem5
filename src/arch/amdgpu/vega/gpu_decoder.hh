@@ -1818,10 +1818,10 @@ struct InFmt_FLAT
     unsigned int OFFSET : 13;
     unsigned int SVE : 1;
     unsigned int SEG : 2;
-    unsigned int GLC : 1;
-    unsigned int SLC : 1;
+    unsigned int SC0 : 1;  // aka GLC; scope bit 0 (see CDNA3 ISA guide 9.1)
+    unsigned int NT : 1;   // aka SLC; non-temporal
     unsigned int OP : 7;
-    unsigned int pad_25 : 1;
+    unsigned int SC1 : 1;  // scope bit 1 (gfx940+ only; unused/0 pre-gfx940)
     unsigned int ENCODING : 6;
 };
 
