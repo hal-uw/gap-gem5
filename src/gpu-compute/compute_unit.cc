@@ -980,6 +980,7 @@ ComputeUnit::init()
     vectorSharedMemUnit.init(this, clockPeriod());
     vrfToLocalMemPipeBus.init(this, clockPeriod());
     locMemToVrfBus.init(this, clockPeriod());
+    ldsBankAccessUnit.init(this, clockPeriod());
 
     // Scalar Memory
     fatal_if(numScalarMemUnits > 1,
@@ -2360,33 +2361,58 @@ ComputeUnit::isVectorAluIdle(uint32_t simdId) const
 
 /**
  * send a general request to the LDS
- * make sure to look at the return value here as your request might be
- * NACK'd and returning false means that you have to have some backup plan
+ *
+ * LDS requests are modeled with events scheduled directly on this
+ * ComputeUnit, the same way vector/scalar memory requests are (see
+ * sendRequest()/sendScalarRequest()), rather than by sending timing
+ * Packets over ldsPort/cuPort.
+ *
+ * Bank conflicts are counted synchronously here (the instruction's
+ * addresses are already known -- there's nothing to wait for), and
+ * ldsBankAccessUnit is reserved for the resulting delay starting now.
+ * The caller (LocalMemPipeline::exec()) checks ldsBankAccessUnit.rdy()
+ * before calling this, so the next instruction can't be admitted until
+ * this one's bank conflicts have drained -- modeling the LDS bank array
+ * as a single shared resource that processes one instruction at a time.
+ * Because the transit latency below (lds_req_tick_latency) is a fixed
+ * constant added equally to every instruction's response time, gating
+ * admission on issue-time occupancy (rather than on occupancy starting
+ * only once the request "arrives" at the LDS) yields identical steady
+ * -state spacing between admissions -- only a per-instruction constant
+ * shift, which does not affect throughput -- while being far simpler
+ * than a reschedule/retry loop.
  */
 bool
 ComputeUnit::sendToLds(GPUDynInstPtr gpuDynInst)
 {
-    // this is just a request to carry the GPUDynInstPtr
-    // back and forth
-    RequestPtr newRequest = std::make_shared<Request>();
-    newRequest->setPaddr(0x0);
+    unsigned bankAccesses = 0;
+    unsigned bankConflicts = lds.countBankConflicts(gpuDynInst, &bankAccesses);
+    stats.ldsBankAccesses += bankAccesses;
+    stats.ldsBankConflictDist.sample(bankConflicts - 1);
 
-    // ReadReq is not evaluted by the LDS but the Packet ctor requires this
-    PacketPtr newPacket = new Packet(newRequest, MemCmd::ReadReq);
+    Tick bankDelay =
+            cyclesToTicks(
+                    Cycles(bankConflicts * lds.getBankConflictPenalty()));
 
-    // This is the SenderState needed upon return
-    newPacket->senderState = new LDSPort::SenderState(gpuDynInst);
-    EventFunctionWrapper *lds_req_event = new EventFunctionWrapper(
-        [this, newPacket] {processLdsReqEvent(newPacket);},
-        "LDS request sent", true);
-    //return ldsPort.sendTimingReq(newPacket);
-    schedule(lds_req_event, curTick() + lds_req_tick_latency);
+    ldsBankAccessUnit.set(bankDelay);
+
+    EventFunctionWrapper *lds_resp_event = new EventFunctionWrapper(
+            [this, gpuDynInst] { processLdsRespEvent(gpuDynInst); },
+            "ComputeUnit LDS response event", true);
+
+    schedule(lds_resp_event, curTick() + lds_req_tick_latency + bankDelay);
+
     return true;
 }
 
+/**
+ * an LDS request has finished being processed; hand it back to the
+ * local memory pipeline
+ */
 void
-ComputeUnit::processLdsReqEvent(PacketPtr packet) {
-    ldsPort.sendTimingReq(packet);
+ComputeUnit::processLdsRespEvent(GPUDynInstPtr gpuDynInst)
+{
+    localMemoryPipe.getLMRespFIFO().push(gpuDynInst);
 }
 
 /**

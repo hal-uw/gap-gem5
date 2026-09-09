@@ -33,7 +33,6 @@
 #define __LDS_STATE_HH__
 
 #include <array>
-#include <queue>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -192,35 +191,12 @@ class LdsState : public ClockedObject
 {
   protected:
     /**
-     * an event to allow event-driven execution
-     */
-    class TickEvent : public Event
-    {
-      protected:
-        LdsState *ldsState = nullptr;
-
-        Tick nextTick = 0;
-
-      public:
-        TickEvent(LdsState *_ldsState) : ldsState(_ldsState) {}
-
-        virtual void process();
-
-        void
-        schedule(Tick when)
-        {
-            mainEventQueue[0]->schedule(this, when);
-        }
-
-        void
-        deschedule()
-        {
-            mainEventQueue[0]->deschedule(this);
-        }
-    };
-
-    /**
-     * CuSidePort is the LDS Port closer to the CU side
+     * CuSidePort is the LDS Port closer to the CU side. LDS timing (the
+     * bank-conflict delay) is modeled with events scheduled directly on
+     * ComputeUnit (see ComputeUnit::sendToLds()/processLdsReqEvent()/
+     * processLdsRespEvent()) rather than by sending timing Packets over
+     * this port, so this port only exists to satisfy the SimObject port
+     * graph and is not expected to carry any timing traffic.
      */
     class CuSidePort : public ResponsePort
     {
@@ -232,7 +208,12 @@ class LdsState : public ClockedObject
       protected:
         LdsState *ownerLds;
 
-        virtual bool recvTimingReq(PacketPtr pkt);
+        virtual bool
+        recvTimingReq(PacketPtr pkt)
+        {
+            panic("LdsState::CuSidePort should not receive timing requests; "
+                  "LDS timing is modeled via events in ComputeUnit");
+        }
 
         virtual Tick
         recvAtomic(PacketPtr pkt)
@@ -248,7 +229,13 @@ class LdsState : public ClockedObject
 
         virtual void recvRetry();
 
-        virtual void recvRespRetry();
+        virtual void
+        recvRespRetry()
+        {
+            panic("LdsState::CuSidePort should not receive response "
+                  "retries; LDS timing is modeled via events in "
+                  "ComputeUnit");
+        }
 
         virtual AddrRangeList
         getAddrRanges() const
@@ -257,12 +244,6 @@ class LdsState : public ClockedObject
             ranges.push_back(ownerLds->getAddrRange());
             return ranges;
         }
-
-        template <typename T> void loadData(PacketPtr packet);
-
-        template <typename T> void storeData(PacketPtr packet);
-
-        template <typename T> void atomicOperation(PacketPtr packet);
     };
 
   protected:
@@ -283,29 +264,13 @@ class LdsState : public ClockedObject
     std::unordered_map<uint32_t, std::unordered_map<uint32_t, LdsChunk>>
         chunkMap;
 
-    // an event to allow the LDS to wake up at a specified time
-    TickEvent tickEvent;
-
-    // the queue of packets that are going back to the CU after a
-    // read/write/atomic op
-    // TODO need to make this have a maximum size to create flow control
-    std::queue<std::pair<Tick, PacketPtr>> returnQueue;
-
     // whether or not there are pending responses
     bool retryResp = false;
 
-    bool process();
-
-    GPUDynInstPtr getDynInstr(PacketPtr packet);
-
-    bool processPacket(PacketPtr packet);
-
-    unsigned countBankConflicts(PacketPtr packet, unsigned *bankAccesses);
-
+  public:
     unsigned countBankConflicts(GPUDynInstPtr gpuDynInst,
                                 unsigned *numBankAccesses);
 
-  public:
     using Params = LdsStateParams;
 
     LdsState(const Params &params);
@@ -448,15 +413,6 @@ class LdsState : public ClockedObject
             wgId, dispatchId);
 
         return &chunkMap[dispatchId][wgId];
-    }
-
-    bool returnQueuePush(std::pair<Tick, PacketPtr> thePair);
-
-    Tick
-    earliestReturnTime() const
-    {
-        // TODO set to max(lastCommand+1, curTick())
-        return returnQueue.empty() ? curTick() : returnQueue.back().first;
     }
 
     void setParent(ComputeUnit *x_parent);

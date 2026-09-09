@@ -229,6 +229,15 @@ class ComputeUnit : public ClockedObject
     WaitClass vrfToLocalMemPipeBus;
     // Resource control for Vector Shared/Local Memory execution unit
     WaitClass vectorSharedMemUnit;
+    // The LDS bank array can only resolve one instruction's worth of bank
+    // conflicts at a time (it's a single shared arbitration structure),
+    // so this gates admission to bank-conflict processing: a new
+    // instruction can't be admitted until the previous one's conflicts
+    // have finished draining. This is distinct from locMemToVrfBus
+    // (the later, genuinely pipelined VRF writeback bus stage) and from
+    // vectorSharedMemUnit (the generic per-cycle issue-rate throttle) --
+    // see ComputeUnit::sendToLds().
+    WaitClass ldsBankAccessUnit;
 
     int numScalarMemUnits;
     // Resource control for scalar memory to SRF data/address bus
@@ -536,7 +545,11 @@ class ComputeUnit : public ClockedObject
 
     void printProgress();
 
-    void processLdsReqEvent(PacketPtr pkt);
+    // Event-driven LDS response handling, mirroring the schedule()-based
+    // pattern used for vector/scalar memory requests
+    // (DataPort::createMemReqEvent/processMemReqEvent etc.) instead of
+    // sending timing Packets over ldsPort.
+    void processLdsRespEvent(GPUDynInstPtr gpuDynInst);
 
   protected:
     RequestorID _requestorId;

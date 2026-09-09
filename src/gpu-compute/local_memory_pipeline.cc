@@ -104,8 +104,18 @@ LocalMemPipeline::exec()
                                             -1);
         }
 
-        // Mark write bus busy for appropriate amount of time
-        computeUnit.locMemToVrfBus.set(m->time);
+        // Mark write bus busy for appropriate amount of time, scaled by
+        // the instruction's per-lane data width (mirrors the dword-scaled
+        // global-mem VRF writeback bus in GlobalMemPipeline::exec()).
+        int busLength = m->isLoad()    ? computeUnit.loadBusLength()
+                        : m->isStore() ? computeUnit.storeBusLength()
+                                       : computeUnit.loadBusLength();
+        busLength = m->isLoad() ? (busLength/4) * m->numSrcScalarDWords()
+                    : m->isStore()
+                        ? (busLength/4) * m->numDstScalarDWords()
+                        : (busLength/4) * m->numSrcScalarDWords();
+        computeUnit.locMemToVrfBus.set(
+            computeUnit.cyclesToTicks(Cycles(busLength)));
         if (computeUnit.shader->coissue_return == 0) {
             w->computeUnit->vectorSharedMemUnit.set(m->time);
         }
@@ -114,10 +124,12 @@ LocalMemPipeline::exec()
     // If pipeline has executed a local memory instruction
     // execute local memory packet and issue the packets
     // to LDS
-    if (!lmIssuedRequests.empty() && lmReturnedRequests.size() < lmQueueSize) {
+    if (!lmIssuedRequests.empty() && lmReturnedRequests.size() < lmQueueSize &&
+        computeUnit.ldsBankAccessUnit.rdy()) {
 
         GPUDynInstPtr m = lmIssuedRequests.front();
 
+        m->initiateAcc(m);
         bool returnVal = computeUnit.sendToLds(m);
         if (!returnVal) {
             DPRINTF(GPUPort, "packet was nack'd and put in retry queue");
