@@ -1206,8 +1206,19 @@ Wavefront::exec()
         ii->isEndOfKernel() || ii->isReturn()) {
         // this is to enforce a fixed number of cycles per issue slot per SIMD
         if (!ii->isScalar()) {
-            computeUnit->vectorALUs[simdId].set(
+            if (ii->isALU()) {
+                if (ii->isFMA() && ii->isF64()) {
+                    computeUnit->vectorALUs[simdId].set(
+                    computeUnit->cyclesToTicks(computeUnit->issuePeriod) << 1);
+                } else {
+                    computeUnit->vectorALUs[simdId].set(
+                    computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+                }
+
+            } else {
+                computeUnit->vectorALUs[simdId].set(
                 computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+            }
         } else {
             computeUnit->scalarALUs[scalarAlu].set(
                 computeUnit->cyclesToTicks(computeUnit->issuePeriod));
