@@ -61,6 +61,9 @@ def addAmdGPUOptions(parser):
         "--simds-per-cu", type=int, default=4, help="SIMD units per CU"
     )
     parser.add_argument(
+        "--scalar-cores-per-cu", type=int, default=1, help="Scalar ALUs per CU"
+    )
+    parser.add_argument(
         "--cu-per-sa",
         type=int,
         default=4,

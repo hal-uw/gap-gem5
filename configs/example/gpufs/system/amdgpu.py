@@ -67,6 +67,7 @@ def createGPU(system, args):
                 cu_id=i,
                 perLaneTLB=per_lane,
                 num_SIMDs=args.simds_per_cu,
+                num_scalar_cores=args.scalar_cores_per_cu,
                 wf_size=args.wf_size,
                 spbypass_pipe_length=args.sp_bypass_path_length,
                 dpbypass_pipe_length=args.dp_bypass_path_length,
