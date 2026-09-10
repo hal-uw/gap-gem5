@@ -124,6 +124,13 @@ def addRunFSOptions(parser):
         help="Set the number of dGPU directories (memory controllers",
     )
     parser.add_argument(
+        "--dgpu-mem-locality",
+        type=int,
+        default=1,
+        help="Interleaving granularity (in cache lines) per dGPU directory; "
+             "1 stripes memory across directories at cache-line granularity",
+    )
+    parser.add_argument(
         "--dgpu-mem-type",
         default="HBM_1000_4H_1x128",
         choices=ObjectList.mem_list.get_names(),
