@@ -157,6 +157,9 @@ class OperandInfo
         return flags.isSet(FLAT);
     }
 
+    void setAccum() { flags.set(ACCUM); }
+    bool isAccum() const { return flags.isSet(ACCUM); }
+
     void
     setVirtToPhysMapping(std::vector<int> v, std::vector<int> p)
     {
@@ -234,7 +237,10 @@ class OperandInfo
         CONSTANT = 0x00000100,
 
         // If the constant is positive or negative
-        POS_CONST = 0x00000200
+        POS_CONST = 0x00000200,
+
+        // Operand resides in the CDNA accumulator (AGPR) window.
+        ACCUM = 0x00000400
     };
 
     Flags flags;
