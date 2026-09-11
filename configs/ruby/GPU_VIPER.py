@@ -295,10 +295,8 @@ class TCC(RubyCache):
             self.tagArrayBanks = 64
         else:
             self.size = MemorySize(options.tcc_size)
-            self.dataArrayBanks = (
-                256 / options.num_tccs
-            )  # number of data banks
-            self.tagArrayBanks = 256 / options.num_tccs  # number of tag banks
+            self.dataArrayBanks = options.tcc_num_banks  # number of data banks
+            self.tagArrayBanks = options.tcc_num_banks  # number of tag banks
         self.size.value = self.size.value / options.num_tccs
         if (self.size.value / int(self.assoc)) < 128:
             self.size.value = int(128 * self.assoc)
