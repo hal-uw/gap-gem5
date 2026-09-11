@@ -275,18 +275,16 @@ class SQCCntrl(GPU_VIPER_SQC_Controller, CntrlBase):
             self.recycle_latency = options.recycle_latency
 
 
-class ScalarCache(RubyCache):
-    dataArrayBanks = 8
-    tagArrayBanks = 8
-    dataAccessLatency = 1
-    tagAccessLatency = 1
-
+class ScalarCache(SQCCache):
     def create(self, options):
         self.size = MemorySize(options.scalar_size)
         self.assoc = options.scalar_assoc
-        if hasattr(options, "sqc_rp"):
+        if hasattr(options, "scalar_rp"):
+            self.replacement_policy = ObjectList.rp_list.get(
+                options.scalar_rp
+            )()
+        elif hasattr(options, "sqc_rp"):
             self.replacement_policy = ObjectList.rp_list.get(options.sqc_rp)()
-
 
 class ScalarCntrl(GPU_VIPER_SQC_Controller, CntrlBase):
     def create(self, options, ruby_system, system):
