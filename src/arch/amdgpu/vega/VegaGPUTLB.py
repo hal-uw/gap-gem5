@@ -126,6 +126,6 @@ class VegaTLBCoalescer(ClockedObject):
     disableCoalescing = Param.Bool(False, "Dispable Coalescing")
     downstream_tlb = Param.VegaGPUTLB(
         NULL,
-        "The TLB this coalescer feeds; used by the last-level coalescer to read the "
-        "line-coalescing predictor",
+        "The TLB this coalescer feeds; used by the last-level coalescer "
+        "to read the line-coalescing predictor",
     )

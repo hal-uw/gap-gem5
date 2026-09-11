@@ -39,9 +39,9 @@
 
 #include "arch/amdgpu/vega/pagetable.hh"
 #include "arch/generic/mmu.hh"
+#include "base/sat_counter.hh"
 #include "base/statistics.hh"
 #include "base/trace.hh"
-#include "base/sat_counter.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/VegaGPUTLB.hh"
@@ -221,11 +221,12 @@ class GpuTLB : public ClockedObject
     VegaTlbEntry *tlbLookup(const RequestPtr &req, bool update_stats);
 
     // Line-coalescing predictor: a 4-bit saturating counter,
-    // meaningful only at the L3 TLB. A real TLB miss (walk that reached memory)
-    // decrements it toward "expect an L3 miss"; a TLB hit increments it. A PWC
-    // or PWC2 hit deliberately does not count as a hit and leaves it unchanged.
-    // When the MSB is clear we expect an L3 miss and it is worthwhile for the
-    // L3 coalescer to line-coalesce (prefetch a full PWC2 line).
+    // meaningful only at the L3 TLB. A real TLB miss (walk that reached
+    // memory) decrements it toward "expect an L3 miss"; a TLB hit increments
+    // it. A PWC or PWC2 hit deliberately does not count as a hit and leaves
+    // it unchanged. When the MSB is clear we expect an L3 miss and it is
+    // worthwhile for the L3 coalescer to line-coalesce (prefetch a full PWC2
+    // line).
     static constexpr unsigned LinePredBits = 4;
     SatCounter8 lineCounter{LinePredBits, 0};
     void noteTlbHit() { lineCounter++; }

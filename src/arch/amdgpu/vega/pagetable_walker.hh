@@ -299,7 +299,7 @@ class Walker : public ClockedObject
         pwcFetchEntries(p.pwc_fetch_bytes / sizeof(uint64_t)),
         funcState(this, nullptr, true),
         enable_pwc(p.enable_pwc),
-	tlb(nullptr),
+        tlb(nullptr),
         requestorId(p.system->getRequestorId(this)),
         deviceRequestorId(999),
         system(p.system),

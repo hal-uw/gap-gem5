@@ -223,7 +223,8 @@ Walker::WalkerState::startWalk()
             entry.paddr = entry.pte.ppn << PageShift;
             entry.paddr += entry.vaddr & mask(entry.logBytes);
 
-            // Send translation return event. The TLB allocates the returned entry in the normal miss-return path.
+            // Send translation return event. The TLB allocates the returned
+            // entry in the normal miss-return path.
             walker->walkerResponse(this, entry, tlbPkt);
         }
     }

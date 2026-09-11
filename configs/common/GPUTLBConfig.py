@@ -291,9 +291,9 @@ def config_tlb_hierarchy(
             l2_coalescer_index += 1
 
     # L2 <-> L3
-    # system.l2_tlb[0].mem_side_ports[0] = system.l3_coalescer[0].cpu_side_ports[
-    #    0
-    # ]
+    # system.l2_tlb[0].mem_side_ports[0] = (
+    #     system.l3_coalescer[0].cpu_side_ports[0]
+    # )
 
     # L3 TLB Vega page table walker to memory for full system only
     if full_system:

@@ -1049,8 +1049,10 @@ GpuTLB::VegaTLBStats::VegaTLBStats(statistics::Group *parent)
       ADD_STAT(inserts2M, "Number of 2 MiB entries inserted"),
       ADD_STAT(localHits4K, "Number of local hits on 4 KiB entries"),
       ADD_STAT(localHits2M, "Number of local hits on 2 MiB entries"),
-       ADD_STAT(walkerReturns4K, "Number of page walks returning 4 KiB entries"),
-       ADD_STAT(walkerReturns2M, "Number of page walks returning 2 MiB entries")
+      ADD_STAT(walkerReturns4K,
+               "Number of page walks returning 4 KiB entries"),
+      ADD_STAT(walkerReturns2M,
+               "Number of page walks returning 2 MiB entries")
 {
     localTLBMissRate = 100 * localNumTLBMisses / localNumTLBAccesses;
     globalTLBMissRate = 100 * globalNumTLBMisses / globalNumTLBAccesses;

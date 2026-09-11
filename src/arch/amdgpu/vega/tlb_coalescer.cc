@@ -313,8 +313,10 @@ VegaTLBCoalescer::updatePhysAddresses(PacketPtr pkt)
         }
 
         // Only the returned packet already has its physical address.
-        // Every other coalesced packet needs to be filled in from the returned page + offset.
-        // Use pointer identity instead of the loop index so this stays correct regardless of the packet's position in the bucket.
+        // Every other coalesced packet needs to be filled in from the
+        // returned page + offset. Use pointer identity instead of the loop
+        // index so this stays correct regardless of the packet's position in
+        // the bucket.
         if (local_pkt != pkt) {
             Addr paddr = first_entry_paddr +
                          (local_pkt_vaddr & (page_size - 1));
@@ -843,10 +845,12 @@ VegaTLBCoalescer::regStats()
         .desc("Number of cycles spent in queue for all incoming reqs");
 
     pendingBlockedProbes.name(name() + ".pending_blocked_probes")
-        .desc("Probe attempts blocked by an overlapping outstanding translation");
+        .desc("Probe attempts blocked by an overlapping outstanding "
+              "translation");
 
     pendingBlockedPackets.name(name() + ".pending_blocked_packets")
-        .desc("Buffered packets in probe attempts blocked by an overlapping outstanding translation");
+        .desc("Buffered packets in probe attempts blocked by an overlapping "
+              "outstanding translation");
 
     downstreamSlotBlocked.name(name() + ".downstream_slot_blocked")
         .desc("Probe event invocations blocked by downstream slot exhaustion");
@@ -869,8 +873,10 @@ VegaTLBCoalescer::regStats()
     issuedTranslationsMax.name(name() + ".issued_translations_max")
         .desc("Maximum number of outstanding translation table entries");
 
-    issuedTranslationPacketsMax.name(name() + ".issued_translation_packets_max")
-        .desc("Maximum number of packets represented by outstanding translations");
+    issuedTranslationPacketsMax.name(
+        name() + ".issued_translation_packets_max")
+        .desc("Maximum number of packets represented by outstanding "
+              "translations");
 
     localLatency.name(name() + ".local_latency")
         .desc("Avg. latency over all incoming pkts");
