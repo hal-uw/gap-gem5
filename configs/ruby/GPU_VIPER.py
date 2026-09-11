@@ -38,7 +38,7 @@ from common import (
 import m5
 from m5.defines import buildEnv
 from m5.objects import *
-from m5.util import addToPath
+from m5.util import addToPath, warn
 
 from .Ruby import (
     create_topology,
@@ -645,6 +645,9 @@ def construct_dirs(options, system, ruby_system, network):
 def construct_gpudirs(options, system, ruby_system, network):
     dir_cntrl_nodes = []
     mem_ctrls = []
+
+    if options.use_gpu_l3:
+        warn("GPU L3 write-back is not supported; modeling a write-through L3.")
 
     xor_low_bit = 0
 
