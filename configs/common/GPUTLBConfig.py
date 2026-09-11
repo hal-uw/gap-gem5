@@ -214,8 +214,8 @@ def config_tlb_hierarchy(
                         system.%s_tlb[%d].cpu_side_ports[0]"
                     % (name, index, name, index)
                 )
-                # Give each Vega coalescer a handle to the TLB it feeds so the
-                # L3 coalescer can read that TLB's line-coalescing predictor.
+                # Give each Vega coalescer a handle to the TLB it feeds. The
+                # final-level coalescer uses that TLB's line predictor.
                 if full_system:
                     exec(
                         "system.%s_coalescer[%d].downstream_tlb = \
@@ -290,12 +290,7 @@ def config_tlb_hierarchy(
             )
             l2_coalescer_index += 1
 
-    # L2 <-> L3
-    # system.l2_tlb[0].mem_side_ports[0] = (
-    #     system.l3_coalescer[0].cpu_side_ports[0]
-    # )
-
-    # L3 TLB Vega page table walker to memory for full system only
+    # Final GPU-TLB page-table walkers connect to memory in full-system mode.
     if full_system:
         for TLB_type in L2:
             name = TLB_type["name"]
