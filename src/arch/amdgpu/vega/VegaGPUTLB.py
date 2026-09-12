@@ -72,6 +72,24 @@ class VegaPagetableWalker(ClockedObject):
     )
     enable_pwc = Param.Bool(True, "Enable page walk cache")
 
+    # Second PWC for caching neighbouring final-level entries fetched from
+    # the same page-table memory fetch. The fetch width is controlled by
+    # pwc_fetch_bytes.
+    neighbour_pwc_entries = Param.Int(256, "Neighbour PWC entries")
+    neighbour_pwc_replacement_policy = Param.BaseReplacementPolicy(
+        LRURP(), "Replacement policy of the neighbour PWC"
+    )
+    neighbour_pwc_indexing_policy = Param.VegaPWCIndexingPolicy(
+        VegaPWCIndexingPolicy(
+            entries=Parent.neighbour_pwc_entries,
+            assoc=Parent.neighbour_pwc_entries,
+        ),
+        "Indexing policy of the neighbour PWC",
+    )
+
+    pwc_fetch_bytes = Param.Unsigned(
+        128, "Page-walk fetch granularity in bytes"
+    )
 
 class VegaGPUTLB(ClockedObject):
     type = "VegaGPUTLB"
@@ -103,6 +121,14 @@ class VegaTLBCoalescer(ClockedObject):
     maxDownstream = Param.Int(64, "max downstream @ this level")
     probesPerCycle = Param.Int(2, "Number of TLB probes per cycle")
     coalescingWindow = Param.Int(1, "Permit coalescing across that many ticks")
+    pwc_fetch_entries = Param.Unsigned(
+        16, "Number of PTEs fetched in one PWC line"
+    )
     cpu_side_ports = VectorResponsePort("Port on side closer to CPU/CU")
     mem_side_ports = VectorRequestPort("Port on side closer to memory")
     disableCoalescing = Param.Bool(False, "Dispable Coalescing")
+    downstream_tlb = Param.VegaGPUTLB(
+        NULL,
+        "The TLB this coalescer feeds; used by the last-level coalescer "
+        "to read the line-coalescing predictor",
+    )
