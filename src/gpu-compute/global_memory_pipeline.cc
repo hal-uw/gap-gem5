@@ -54,7 +54,9 @@ GlobalMemPipeline::GlobalMemPipeline(const ComputeUnitParams &p,
       inflightStores(0),
       inflightLoads(0),
       stats(&cu)
-{}
+{
+    revert_gm_fix = p.revert_gm_fix;
+}
 
 void
 GlobalMemPipeline::init()
@@ -271,6 +273,17 @@ GlobalMemPipeline::exec()
 GPUDynInstPtr
 GlobalMemPipeline::getNextReadyResp()
 {
+    if (revert_gm_fix) {
+        if (!gmOrderedRespBuffer.empty()) {
+            auto mem_req = gmOrderedRespBuffer.begin();
+
+            if (mem_req->second.second) {
+                return mem_req->second.first;
+            }
+        }
+        return nullptr;
+    }
+
     auto l_hash =  [](const std::pair<uint8_t, uint8_t>& p) -> std::size_t {
         return (static_cast<uint16_t>(p.first) << 8) | p.second;
     };

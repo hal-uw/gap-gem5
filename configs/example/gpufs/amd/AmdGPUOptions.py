@@ -352,3 +352,10 @@ def addAmdGPUOptions(parser):
         default=False,
         help="Use HBMCtrl",
     )
+
+    parser.add_argument(
+        "--gap-revert-gm-fix",
+        action="store_true",
+        default=False,
+        help="revert f609a4b909aabe18ea7625c53d1cad28a085c388",
+    )

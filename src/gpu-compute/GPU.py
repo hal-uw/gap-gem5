@@ -299,6 +299,9 @@ class ComputeUnit(ClockedObject):
     fetch_depth = Param.Int(
         2, "number of i-cache lines that may be buffered in the fetch unit."
     )
+    revert_gm_fix = Param.Bool(
+        False, "Revert the fix for the global memory pipeline"
+    )
 
 
 class Shader(ClockedObject):

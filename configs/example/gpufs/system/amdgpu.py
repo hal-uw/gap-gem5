@@ -96,6 +96,7 @@ def createGPU(system, args):
                     bankConflictPenalty=args.ldsBankConflictPenalty,
                     size=args.lds_size,
                 ),
+                revert_gm_fix=args.gap_revert_gm_fix,
             )
         )
 

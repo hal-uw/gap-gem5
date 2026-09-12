@@ -130,6 +130,8 @@ class GlobalMemPipeline
     // The size of global memory.
     int globalMemSize;
 
+    bool revert_gm_fix;
+
     /*
      * This buffer holds the memory responses in order data - the responses
      * are ordered by their unique sequence number, which is monotonically
