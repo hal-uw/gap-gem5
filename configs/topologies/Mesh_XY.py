@@ -56,6 +56,7 @@ class Mesh_XY(SimpleTopology):
         # Can be over-ridden on a per link/router basis
         link_latency = options.link_latency  # used by simple and garnet
         router_latency = options.router_latency  # only used by garnet
+        bw = getattr(options, "link_width_bits", 128) // 8
 
         # There must be an evenly divisible number of cntrls to routers
         # Also, obviously the number or rows must be <= the number of routers
@@ -95,6 +96,7 @@ class Mesh_XY(SimpleTopology):
                     ext_node=n,
                     int_node=routers[router_id],
                     latency=link_latency,
+                    bandwidth_factor=bw,
                 )
             )
             link_count += 1
@@ -110,6 +112,7 @@ class Mesh_XY(SimpleTopology):
                     ext_node=node,
                     int_node=routers[0],
                     latency=link_latency,
+                    bandwidth_factor=bw,
                 )
             )
             link_count += 1
@@ -147,6 +150,7 @@ class Mesh_XY(SimpleTopology):
                                 dst_inport="West",
                                 latency=link_latency,
                                 weight=1,
+                                bandwidth_factor=bw,
                                 supported_vnets=[v] if v is not None else [],
                             )
                         )
@@ -168,6 +172,7 @@ class Mesh_XY(SimpleTopology):
                                 dst_inport="East",
                                 latency=link_latency,
                                 weight=1,
+                                bandwidth_factor=bw,
                                 supported_vnets=[v] if v is not None else [],
                             )
                         )
@@ -189,6 +194,7 @@ class Mesh_XY(SimpleTopology):
                                 dst_inport="South",
                                 latency=link_latency,
                                 weight=2,
+                                bandwidth_factor=bw,
                                 supported_vnets=[v] if v is not None else [],
                             )
                         )
@@ -210,6 +216,7 @@ class Mesh_XY(SimpleTopology):
                                 dst_inport="North",
                                 latency=link_latency,
                                 weight=2,
+                                bandwidth_factor=bw,
                                 supported_vnets=[v] if v is not None else [],
                             )
                         )
