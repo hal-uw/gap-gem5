@@ -57,6 +57,8 @@ def makeGpuFSSystem(args):
         # Tell linux to use MP table for PCI IRQs and not ACPI.
         "pci=noacpi",
     ]
+    if args.disable_watchdog:
+        boot_options.extend(["nowatchdog", "nosoftlockup", "tsc=unstable"])
     cmdline = " ".join(boot_options)
 
     if MemorySize(args.mem_size) < MemorySize("2GiB"):

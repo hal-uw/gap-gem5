@@ -53,6 +53,13 @@ class RubyGPUCoalescer(RubyPort):
         "max outstanding cycles for a request before "
         "deadlock/livelock declared",
     )
+    disable_deadlock_check = Param.Bool(
+        False,
+        "Disable the coalescer deadlock watchdog. The watchdog aborts the "
+        "simulation when a request stays outstanding longer than "
+        "deadlock_threshold; disable it for slow-memory sensitivity "
+        "experiments where long-lived requests are expected.",
+    )
     garnet_standalone = Param.Bool(False, "")
 
     gmTokenPort = ResponsePort("Port to the CU for sharing tokens")
