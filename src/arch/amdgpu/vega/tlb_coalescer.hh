@@ -255,7 +255,7 @@ class VegaTLBCoalescer : public ClockedObject
     // Uses the downstream TLB's line predictor to decide whether to open
     // a full PWC2-line group and reissue unresolved neighbours. The GPU TLB
     // hierarchy is currently two levels (L1, L2), so this fires at L2.
-    static constexpr unsigned LineGroupPages = 16;
+    unsigned pwcFetchEntries;
     VegaISA::GpuTLB *downstreamTLB = nullptr;
     bool lineCoalesceEnabled() const
     {
@@ -271,7 +271,7 @@ class VegaTLBCoalescer : public ClockedObject
     // a whole region onto one key and serializes every request in it.
     Addr maxCoalescePageSize() const
     {
-        return lineCoalesceEnabled() ? default_pgSize * LineGroupPages
+        return lineCoalesceEnabled() ? default_pgSize * pwcFetchEntries
                                      : default_pgSize;
     }
     Addr clampCoalescePageSize(Addr pg_size) const

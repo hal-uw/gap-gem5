@@ -121,6 +121,9 @@ class VegaTLBCoalescer(ClockedObject):
     maxDownstream = Param.Int(64, "max downstream @ this level")
     probesPerCycle = Param.Int(2, "Number of TLB probes per cycle")
     coalescingWindow = Param.Int(1, "Permit coalescing across that many ticks")
+    pwc_fetch_entries = Param.Unsigned(
+        16, "Number of PTEs fetched in one PWC line"
+    )
     cpu_side_ports = VectorResponsePort("Port on side closer to CPU/CU")
     mem_side_ports = VectorRequestPort("Port on side closer to memory")
     disableCoalescing = Param.Bool(False, "Dispable Coalescing")

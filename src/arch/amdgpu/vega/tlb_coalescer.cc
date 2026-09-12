@@ -49,6 +49,7 @@ VegaTLBCoalescer::VegaTLBCoalescer(const VegaTLBCoalescerParams &p)
       TLBProbesPerCycle(p.probesPerCycle),
       coalescingWindow(p.coalescingWindow),
       disableCoalescing(p.disableCoalescing),
+      pwcFetchEntries(p.pwc_fetch_entries),
       probeTLBEvent([this] { processProbeTLBEvent(); }, "Probe the TLB below",
                     false, Event::CPU_Tick_Pri),
       cleanupEvent([this] { processCleanupEvent(); },
@@ -62,6 +63,8 @@ VegaTLBCoalescer::VegaTLBCoalescer(const VegaTLBCoalescerParams &p)
       maxDownstream(p.maxDownstream),
       numDownstream(0)
 {
+    fatal_if(pwcFetchEntries == 0,
+             "VegaTLBCoalescer pwc_fetch_entries must be non-zero");
     // create the response ports based on the number of connected ports
     for (size_t i = 0; i < p.port_cpu_side_ports_connection_count; ++i) {
         cpuSidePort.push_back(
@@ -109,7 +112,7 @@ VegaTLBCoalescer::newGroupPageSize()
 {
     Addr pg_size = predictedPageSize();
     if (lineCoalesceEnabled()) {
-        pg_size *= LineGroupPages;
+        pg_size *= pwcFetchEntries;
         // The line granule becomes a key in issuedTranslationsTable, so the
         // return-side finder and the outstanding-page block check must probe
         // it too.

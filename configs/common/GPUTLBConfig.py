@@ -72,6 +72,7 @@ def Coalescer_constructor(options, level, full_system):
             options.L%(level)dProbesPerCycle, \
             tlb_level  = %(level)d ,\
             coalescingWindow = options.L%(level)dCoalescingWindow,\
+            pwc_fetch_entries = getattr(options, 'pwc_fetch_bytes', 64) // 8,\
             disableCoalescing = options.L%(level)dDisableCoalescing,\
             clk_domain = SrcClockDomain(\
                 clock = options.gpu_clock,\
