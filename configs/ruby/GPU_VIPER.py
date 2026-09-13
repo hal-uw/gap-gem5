@@ -745,7 +745,7 @@ def construct_gpudirs(options, system, ruby_system, network):
                 gpu_mem_range,
                 2 * i,
                 int(math.log(options.dgpu_num_dirs, 2)) + 1,
-                options.cacheline_size,
+                options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
             dram_intf_2 = MemConfig.create_mem_intf(
@@ -753,7 +753,7 @@ def construct_gpudirs(options, system, ruby_system, network):
                 gpu_mem_range,
                 2 * i + 1,
                 int(math.log(options.dgpu_num_dirs, 2)) + 1,
-                options.cacheline_size,
+                options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
         else:
@@ -762,7 +762,7 @@ def construct_gpudirs(options, system, ruby_system, network):
                 gpu_mem_range,
                 i,
                 int(math.log(options.dgpu_num_dirs, 2)),
-                options.cacheline_size,
+                options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
 
