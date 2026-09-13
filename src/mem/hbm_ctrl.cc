@@ -222,14 +222,16 @@ HBMCtrl::recvTimingReq(PacketPtr pkt)
     }
     prevArrival = curTick();
 
-    // What type of media does this packet access?
+    // Determine which pseudo channel this packet belongs to
+    // by checking the actual address ranges of each interface
     bool is_pc0;
 
-    // TODO: make the interleaving bit across pseudo channels a parameter
-    if (bits(pkt->getAddr(), 6) == 0) {
+    if (pc0Int->getAddrRange().contains(pkt->getAddr())) {
         is_pc0 = true;
-    } else {
+    } else if (pc1Int->getAddrRange().contains(pkt->getAddr())) {
         is_pc0 = false;
+    } else {
+        panic("Can't handle address range for packet %s\n", pkt->print());
     }
 
     // Find out how many memory packets a pkt translates to
