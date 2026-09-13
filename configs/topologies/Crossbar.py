@@ -39,6 +39,10 @@ class Crossbar(SimpleTopology):
         link_latency = options.link_latency  # used by simple and garnet
         router_latency = options.router_latency  # only used by garnet
 
+        # bandwidth_factor is used by SimpleNetwork (in bytes);
+        # --link-width-bits converts to bytes for consistency.
+        bw = getattr(options, "link_width_bits", 128) // 8
+
         # Create an individual router for each controller plus one more for
         # the centralized crossbar.  The large numbers of routers are needed
         # because external links do not model outgoing bandwidth in the
@@ -57,6 +61,7 @@ class Crossbar(SimpleTopology):
                 ext_node=n,
                 int_node=routers[i],
                 latency=link_latency,
+                bandwidth_factor=bw,
             )
             for (i, n) in enumerate(self.nodes)
         ]
@@ -72,6 +77,7 @@ class Crossbar(SimpleTopology):
                     src_node=routers[i],
                     dst_node=xbar,
                     latency=link_latency,
+                    bandwidth_factor=bw,
                 )
             )
 
@@ -84,6 +90,7 @@ class Crossbar(SimpleTopology):
                     src_node=xbar,
                     dst_node=routers[i],
                     latency=link_latency,
+                    bandwidth_factor=bw,
                 )
             )
 

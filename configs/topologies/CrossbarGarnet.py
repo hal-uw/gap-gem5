@@ -38,11 +38,13 @@ class CrossbarGarnet(SimpleTopology):
         # the associated allocator.
         # For simple network, use Crossbar.py
 
+        bw = getattr(options, "link_width_bits", 128) // 8
+
         xbar = Router(router_id=0)
         network.routers = xbar
 
         ext_links = [
-            ExtLink(link_id=i, ext_node=n, int_node=xbar)
+            ExtLink(link_id=i, ext_node=n, int_node=xbar, bandwidth_factor=bw)
             for (i, n) in enumerate(self.nodes)
         ]
         network.ext_links = ext_links
