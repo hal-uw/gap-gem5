@@ -427,6 +427,7 @@ class GPUCoalescer : public RubyPort
   protected:
     int m_max_outstanding_requests;
     Cycles m_deadlock_threshold;
+    bool m_disable_deadlock_check;
 
     CacheMemory* m_dataCache_ptr;
     CacheMemory* m_instCache_ptr;
