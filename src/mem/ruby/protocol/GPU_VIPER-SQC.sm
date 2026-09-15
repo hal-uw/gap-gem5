@@ -140,8 +140,11 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
 
   void functionalRead(Addr addr, Packet *pkt) {
     TBE tbe := TBEs.lookup(addr);
+    Entry cache_entry := getCacheEntry(addr);
     if(is_valid(tbe)) {
       testAndRead(addr, tbe.DataBlk, pkt);
+    } else if (is_valid(cache_entry)) {
+      testAndRead(addr, cache_entry.DataBlk, pkt);
     } else {
       functionalMemoryRead(pkt);
     }
@@ -151,9 +154,13 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
     int num_functional_writes := 0;
 
     TBE tbe := TBEs.lookup(addr);
+    Entry cache_entry := getCacheEntry(addr);
     if(is_valid(tbe)) {
       num_functional_writes := num_functional_writes +
             testAndWrite(addr, tbe.DataBlk, pkt);
+    } else if (is_valid(cache_entry)) {
+      num_functional_writes := num_functional_writes +
+            testAndWrite(addr, cache_entry.DataBlk, pkt);
     }
 
     num_functional_writes := num_functional_writes +
