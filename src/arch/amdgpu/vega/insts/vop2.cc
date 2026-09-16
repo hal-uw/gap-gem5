@@ -38,6 +38,161 @@ namespace gem5
 
 namespace VegaISA
 {
+namespace
+{
+
+uint32_t
+sdwaSelectU32(uint32_t value, unsigned sel, bool sext, bool abs, bool neg)
+{
+    panic_if(sel > SDWA_DWORD, "Invalid SDWA source selector");
+    const unsigned width = sel < SDWA_WORD_0 ? 8 :
+                           sel < SDWA_DWORD ? 16 : 32;
+    const unsigned shift = sel < SDWA_WORD_0 ? sel * 8 :
+                           sel < SDWA_DWORD ? (sel - SDWA_WORD_0) * 16 : 0;
+    const uint32_t field_mask = UINT32_MAX >> (32 - width);
+    value = (value >> shift) & field_mask;
+    if (sext && (value & (uint32_t(1) << (width - 1))))
+        value |= ~field_mask;
+    if (abs)
+        value &= 0x7fffffff;
+    if (neg)
+        value ^= 0x80000000;
+    return value;
+}
+
+uint32_t
+sdwaDstU32(uint32_t value, uint32_t old_dst, unsigned sel, unsigned unused)
+{
+    panic_if(sel > SDWA_DWORD || unused > SDWA_UNUSED_PRESERVE,
+             "Invalid SDWA destination selector");
+    const unsigned width = sel < SDWA_WORD_0 ? 8 :
+                           sel < SDWA_DWORD ? 16 : 32;
+    const unsigned shift = sel < SDWA_WORD_0 ? sel * 8 :
+                           sel < SDWA_DWORD ? (sel - SDWA_WORD_0) * 16 : 0;
+    const uint32_t field_mask = UINT32_MAX >> (32 - width);
+    value &= field_mask;
+    if (unused == SDWA_UNUSED_PRESERVE)
+        return (old_dst & ~(field_mask << shift)) | (value << shift);
+    if (unused == SDWA_UNUSED_SEXT &&
+        (value & (uint32_t(1) << (width - 1)))) {
+        value |= ~field_mask;
+    }
+    return value << shift;
+}
+
+template <typename BinaryOp>
+void
+executeSdwaU16(GPUDynInstPtr gpuDynInst, const InFmt_VOP2 &inst,
+               const InFmt_VOP_SDWA &sdwa, const char *opcode,
+               bool preserve_dst, BinaryOp op)
+{
+    // ABS/NEG and OMOD are floating-point modifiers and are not legal for
+    // these unsigned integer operations. SEXT and CLMP are supported.
+    panic_if(sdwa.SRC0_ABS || sdwa.SRC0_NEG ||
+             sdwa.SRC1_ABS || sdwa.SRC1_NEG || sdwa.OMOD,
+             "Invalid modifier for %s SDWA", opcode);
+
+    const int src0_idx = sdwa.SRC0 + (sdwa.S0 ? 0 : REG_VGPR_MIN);
+    const int src1_idx = inst.VSRC1 + (sdwa.S1 ? 0 : REG_VGPR_MIN);
+    ConstVecOperandU32 src0(gpuDynInst, src0_idx);
+    ConstVecOperandU32 src1(gpuDynInst, src1_idx);
+    VecOperandU32 vdst(gpuDynInst, inst.VDST);
+    src0.readSrc();
+    src1.readSrc();
+    if (preserve_dst)
+        vdst.read();
+
+    Wavefront *wf = gpuDynInst->wavefront();
+    for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+        if (!wf->execMask(lane))
+            continue;
+
+        const uint16_t a = sdwaSelectU32(src0[lane], sdwa.SRC0_SEL,
+                                        sdwa.SRC0_SEXT, false, false);
+        const uint16_t b = sdwaSelectU32(src1[lane], sdwa.SRC1_SEL,
+                                        sdwa.SRC1_SEXT, false, false);
+        uint32_t result = op(a, b);
+        if (sdwa.CLMP && result > UINT16_MAX)
+            result = UINT16_MAX;
+        else
+            result &= UINT16_MAX;
+
+        const uint32_t old_dst = preserve_dst ? vdst[lane] : 0;
+        vdst[lane] = sdwaDstU32(result, old_dst, sdwa.DST_SEL, sdwa.DST_U);
+    }
+    vdst.write();
+}
+
+// VOP2 FP16 instructions carry one IEEE binary16 value in the low half of
+// each VGPR lane. mxfloat16 stores binary16 values left-aligned, so shift
+// them back down before writing the architectural destination.
+template <typename BinaryOp>
+void
+executeVop2F16(GPUDynInstPtr gpuDynInst, const InFmt_VOP2 &inst,
+               const InFmt_VOP_SDWA *sdwa, BinaryOp op)
+{
+    Wavefront *wf = gpuDynInst->wavefront();
+    const int src0_idx = sdwa ?
+        sdwa->SRC0 + (sdwa->S0 ? 0 : REG_VGPR_MIN) : inst.SRC0;
+    const int src1_idx = sdwa ?
+        inst.VSRC1 + (sdwa->S1 ? 0 : REG_VGPR_MIN) : inst.VSRC1;
+    ConstVecOperandU32 src0(gpuDynInst, src0_idx);
+    ConstVecOperandU32 src1(gpuDynInst, src1_idx);
+    VecOperandU32 vdst(gpuDynInst, inst.VDST);
+
+    if (sdwa) {
+        // SEXT is an integer-only modifier and OMOD has no use in the
+        // compiler-emitted FP16 SDWA forms. Reject them rather than quietly
+        // applying integer semantics to floating-point inputs.
+        panic_if(sdwa->SRC0_SEXT || sdwa->SRC1_SEXT || sdwa->OMOD,
+                 "Unsupported FP16 SDWA modifier");
+    }
+
+    src0.readSrc();
+    src1.readSrc();
+    const bool preserve_dst = sdwa &&
+        sdwa->DST_U == SDWA_UNUSED_PRESERVE &&
+        sdwa->DST_SEL != SDWA_DWORD;
+    if (preserve_dst)
+        vdst.read();
+
+    const auto selectF16 = [](uint32_t value, unsigned sel, bool abs,
+                              bool neg) {
+        uint16_t result = sdwaSelectU32(value, sel, false, false, false);
+        if (abs)
+            result &= 0x7fff;
+        if (neg)
+            result ^= 0x8000;
+        return result;
+    };
+
+    for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+        if (!wf->execMask(lane))
+            continue;
+
+        const uint16_t a_bits = sdwa ?
+            selectF16(src0[lane], sdwa->SRC0_SEL, sdwa->SRC0_ABS,
+                      sdwa->SRC0_NEG) : src0[lane] & UINT16_MAX;
+        const uint16_t b_bits = sdwa ?
+            selectF16(src1[lane], sdwa->SRC1_SEL, sdwa->SRC1_ABS,
+                      sdwa->SRC1_NEG) : src1[lane] & UINT16_MAX;
+        const AMDGPU::mxfloat16 a(static_cast<uint32_t>(a_bits));
+        const AMDGPU::mxfloat16 b(static_cast<uint32_t>(b_bits));
+        float result = op(float(a), float(b));
+        if (sdwa && sdwa->CLMP)
+            result = std::fmin(std::fmax(result, 0.0f), 1.0f);
+        const AMDGPU::mxfloat16 fp_result(result);
+        const uint32_t value = fp_result.data >> 16;
+        vdst[lane] = sdwa ?
+            sdwaDstU32(value, preserve_dst ? vdst[lane] : 0,
+                       sdwa->DST_SEL, sdwa->DST_U) : value;
+    }
+
+    vdst.write();
+}
+
+} // anonymous namespace
+
 // --- Inst_VOP2__V_CNDMASK_B32 class methods ---
 
 Inst_VOP2__V_CNDMASK_B32::Inst_VOP2__V_CNDMASK_B32(InFmt_VOP2 *iFmt)
@@ -50,6 +205,14 @@ Inst_VOP2__V_CNDMASK_B32::Inst_VOP2__V_CNDMASK_B32(InFmt_VOP2 *iFmt)
 Inst_VOP2__V_CNDMASK_B32::~Inst_VOP2__V_CNDMASK_B32()
 {} // ~Inst_VOP2__V_CNDMASK_B32
 
+void
+Inst_VOP2__V_CNDMASK_B32::initOperandInfo()
+{
+    if (isSDWAInst())
+        return initSdwaOperandInfo();
+    Inst_VOP2::initOperandInfo();
+}
+
 // --- description from .arch file ---
 // D.u = (VCC[i] ? S1.u : S0.u) (i = threadID in wave); VOP3: specify VCC
 // as a scalar GPR in S2.
@@ -57,6 +220,39 @@ void
 Inst_VOP2__V_CNDMASK_B32::execute(GPUDynInstPtr gpuDynInst)
 {
     Wavefront *wf = gpuDynInst->wavefront();
+    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
+
+    if (isSDWAInst()) {
+        const auto &sdwa = extData.iFmt_VOP_SDWA;
+        panic_if(sdwa.CLMP || sdwa.OMOD,
+                 "Invalid output modifier for %s SDWA", _opcode);
+        const int src0_idx = sdwa.SRC0 + (sdwa.S0 ? 0 : REG_VGPR_MIN);
+        const int src1_idx = instData.VSRC1 + (sdwa.S1 ? 0 : REG_VGPR_MIN);
+        ConstVecOperandU32 src0(gpuDynInst, src0_idx);
+        ConstVecOperandU32 src1(gpuDynInst, src1_idx);
+        ConstScalarOperandU64 vcc(gpuDynInst, REG_VCC_LO);
+        VecOperandU32 vdst(gpuDynInst, instData.VDST);
+        src0.readSrc();
+        src1.readSrc();
+        vcc.read();
+        if (sdwaPreservesDst())
+            vdst.read();
+
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (!wf->execMask(lane))
+                continue;
+            const uint32_t a = sdwaSelectU32(src0[lane], sdwa.SRC0_SEL,
+                sdwa.SRC0_SEXT, sdwa.SRC0_ABS, sdwa.SRC0_NEG);
+            const uint32_t b = sdwaSelectU32(src1[lane], sdwa.SRC1_SEL,
+                sdwa.SRC1_SEXT, sdwa.SRC1_ABS, sdwa.SRC1_NEG);
+            const uint32_t old_dst = sdwaPreservesDst() ? vdst[lane] : 0;
+            vdst[lane] = sdwaDstU32(bits(vcc.rawData(), lane) ? b : a,
+                old_dst, sdwa.DST_SEL, sdwa.DST_U);
+        }
+        vdst.write();
+        return;
+    }
+
     ConstVecOperandU32 src0(gpuDynInst, instData.SRC0);
     ConstVecOperandU32 src1(gpuDynInst, instData.VSRC1);
     VecOperandU32 vdst(gpuDynInst, instData.VDST);
@@ -65,9 +261,6 @@ Inst_VOP2__V_CNDMASK_B32::execute(GPUDynInstPtr gpuDynInst)
     src0.readSrc();
     src1.read();
     vcc.read();
-
-    panic_if(isSDWAInst(), "SDWA not implemented for %s", _opcode);
-    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (wf->execMask(lane)) {
@@ -1482,7 +1675,10 @@ Inst_VOP2__V_ADD_F16::~Inst_VOP2__V_ADD_F16()
 void
 Inst_VOP2__V_ADD_F16::execute(GPUDynInstPtr gpuDynInst)
 {
-    panicUnimplemented();
+    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
+    executeVop2F16(gpuDynInst, instData,
+                   isSDWAInst() ? &extData.iFmt_VOP_SDWA : nullptr,
+                   [](float a, float b) { return a + b; });
 } // execute
 // --- Inst_VOP2__V_SUB_F16 class methods ---
 
@@ -1503,7 +1699,10 @@ Inst_VOP2__V_SUB_F16::~Inst_VOP2__V_SUB_F16()
 void
 Inst_VOP2__V_SUB_F16::execute(GPUDynInstPtr gpuDynInst)
 {
-    panicUnimplemented();
+    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
+    executeVop2F16(gpuDynInst, instData,
+                   isSDWAInst() ? &extData.iFmt_VOP_SDWA : nullptr,
+                   [](float a, float b) { return a - b; });
 } // execute
 // --- Inst_VOP2__V_SUBREV_F16 class methods ---
 
@@ -1544,7 +1743,10 @@ Inst_VOP2__V_MUL_F16::~Inst_VOP2__V_MUL_F16()
 void
 Inst_VOP2__V_MUL_F16::execute(GPUDynInstPtr gpuDynInst)
 {
-    panicUnimplemented();
+    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
+    executeVop2F16(gpuDynInst, instData,
+                   isSDWAInst() ? &extData.iFmt_VOP_SDWA : nullptr,
+                   [](float a, float b) { return a * b; });
 } // execute
 // --- Inst_VOP2__V_MAC_F16 class methods ---
 
@@ -1627,12 +1829,30 @@ Inst_VOP2__V_ADD_U16::Inst_VOP2__V_ADD_U16(InFmt_VOP2 *iFmt)
 Inst_VOP2__V_ADD_U16::~Inst_VOP2__V_ADD_U16()
 {} // ~Inst_VOP2__V_ADD_U16
 
+void
+Inst_VOP2__V_ADD_U16::initOperandInfo()
+{
+    if (isSDWAInst())
+        return initSdwaOperandInfo();
+    Inst_VOP2::initOperandInfo();
+}
+
 // --- description from .arch file ---
 // D.u16 = S0.u16 + S1.u16.
 // Supports saturation (unsigned 16-bit integer domain).
 void
 Inst_VOP2__V_ADD_U16::execute(GPUDynInstPtr gpuDynInst)
 {
+    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
+    if (isSDWAInst()) {
+        executeSdwaU16(gpuDynInst, instData, extData.iFmt_VOP_SDWA,
+                       _opcode.c_str(), sdwaPreservesDst(),
+                       [](uint16_t a, uint16_t b) {
+                           return uint32_t(a) + uint32_t(b);
+                       });
+        return;
+    }
+
     Wavefront *wf = gpuDynInst->wavefront();
     ConstVecOperandU16 src0(gpuDynInst, instData.SRC0);
     ConstVecOperandU16 src1(gpuDynInst, instData.VSRC1);
@@ -1640,9 +1860,6 @@ Inst_VOP2__V_ADD_U16::execute(GPUDynInstPtr gpuDynInst)
 
     src0.readSrc();
     src1.read();
-
-    panic_if(isSDWAInst(), "SDWA not implemented for %s", _opcode);
-    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (wf->execMask(lane)) {
@@ -1736,12 +1953,30 @@ Inst_VOP2__V_MUL_LO_U16::Inst_VOP2__V_MUL_LO_U16(InFmt_VOP2 *iFmt)
 Inst_VOP2__V_MUL_LO_U16::~Inst_VOP2__V_MUL_LO_U16()
 {} // ~Inst_VOP2__V_MUL_LO_U16
 
+void
+Inst_VOP2__V_MUL_LO_U16::initOperandInfo()
+{
+    if (isSDWAInst())
+        return initSdwaOperandInfo();
+    Inst_VOP2::initOperandInfo();
+}
+
 // --- description from .arch file ---
 // D.u16 = S0.u16 * S1.u16.
 // Supports saturation (unsigned 16-bit integer domain).
 void
 Inst_VOP2__V_MUL_LO_U16::execute(GPUDynInstPtr gpuDynInst)
 {
+    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
+    if (isSDWAInst()) {
+        executeSdwaU16(gpuDynInst, instData, extData.iFmt_VOP_SDWA,
+                       _opcode.c_str(), sdwaPreservesDst(),
+                       [](uint16_t a, uint16_t b) {
+                           return uint32_t(a) * uint32_t(b);
+                       });
+        return;
+    }
+
     Wavefront *wf = gpuDynInst->wavefront();
     ConstVecOperandU16 src0(gpuDynInst, instData.SRC0);
     ConstVecOperandU16 src1(gpuDynInst, instData.VSRC1);
@@ -1749,9 +1984,6 @@ Inst_VOP2__V_MUL_LO_U16::execute(GPUDynInstPtr gpuDynInst)
 
     src0.readSrc();
     src1.read();
-
-    panic_if(isSDWAInst(), "SDWA not implemented for %s", _opcode);
-    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (wf->execMask(lane)) {
@@ -1882,7 +2114,10 @@ Inst_VOP2__V_MAX_F16::~Inst_VOP2__V_MAX_F16()
 void
 Inst_VOP2__V_MAX_F16::execute(GPUDynInstPtr gpuDynInst)
 {
-    panicUnimplemented();
+    panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
+    executeVop2F16(gpuDynInst, instData,
+                   isSDWAInst() ? &extData.iFmt_VOP_SDWA : nullptr,
+                   [](float a, float b) { return std::fmax(a, b); });
 } // execute
 // --- Inst_VOP2__V_MIN_F16 class methods ---
 
