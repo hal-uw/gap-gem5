@@ -322,6 +322,8 @@ class ComputeUnit : public ClockedObject
     int operandNetworkLength;
     // number of cycles per instruction issue period
     Cycles issuePeriod;
+    // number of cycles per issue period for scalar ops
+    Cycles scalarIssuePeriod;
 
     // VRF to GM Bus latency
     Cycles vrf_gm_bus_latency;

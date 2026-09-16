@@ -1221,12 +1221,12 @@ Wavefront::exec()
             }
         } else {
             computeUnit->scalarALUs[scalarAlu].set(
-                computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+                computeUnit->cyclesToTicks(computeUnit->scalarIssuePeriod));
         }
         // Barrier on Scalar ALU
     } else if (ii->isBarrier()) {
         computeUnit->scalarALUs[scalarAlu].set(
-            computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+            computeUnit->cyclesToTicks(computeUnit->scalarIssuePeriod));
         // GM or Flat as GM Load
     } else if (ii->isLoad() && (ii->isGlobalMem() || flat_as_gm)) {
         if (!ii->isScalar()) {
@@ -1240,7 +1240,7 @@ Wavefront::exec()
             computeUnit->srfToScalarMemPipeBus.set(
                 computeUnit->cyclesToTicks(computeUnit->srf_scm_bus_latency));
             computeUnit->scalarMemUnit.set(
-                computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+                computeUnit->cyclesToTicks(computeUnit->scalarIssuePeriod));
             computeUnit->stats.instCyclesScMemPerSimd[simdId] +=
                 computeUnit->srf_scm_bus_latency;
         }
@@ -1257,7 +1257,7 @@ Wavefront::exec()
             computeUnit->srfToScalarMemPipeBus.set(computeUnit->cyclesToTicks(
                 Cycles(2 * computeUnit->srf_scm_bus_latency)));
             computeUnit->scalarMemUnit.set(
-                computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+                computeUnit->cyclesToTicks(computeUnit->scalarIssuePeriod));
             computeUnit->stats.instCyclesScMemPerSimd[simdId] +=
                 (2 * computeUnit->srf_scm_bus_latency);
         }
@@ -1274,7 +1274,7 @@ Wavefront::exec()
             computeUnit->srfToScalarMemPipeBus.set(computeUnit->cyclesToTicks(
                 Cycles(2 * computeUnit->srf_scm_bus_latency)));
             computeUnit->scalarMemUnit.set(
-                computeUnit->cyclesToTicks(computeUnit->issuePeriod));
+                computeUnit->cyclesToTicks(computeUnit->scalarIssuePeriod));
             computeUnit->stats.instCyclesScMemPerSimd[simdId] +=
                 (2 * computeUnit->srf_scm_bus_latency);
         }
