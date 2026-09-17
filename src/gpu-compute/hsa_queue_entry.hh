@@ -104,8 +104,9 @@ class HSAQueueEntry
         // LLVM docs: https://www.llvm.org/docs/AMDGPUUsage.html
         //     #code-object-v3-kernel-descriptor
         //
-        // Currently, gem5 supported gfx version use a multiplier of 8. The
-        // only exception is gfx900 (Vega10).
+        // CDNA's VGPR field is encoded from LLVM's total unified allocation:
+        // alignTo(num_arch_vgprs, 4) + num_agprs. ACCUM_OFFSET only identifies
+        // where AGPR operands begin; it must not be added to this allocation.
         if (gfx_version == GfxVersion::gfx90a ||
             gfx_version == GfxVersion::gfx942 ||
             gfx_version == GfxVersion::gfx950) {
