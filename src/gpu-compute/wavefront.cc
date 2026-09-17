@@ -959,7 +959,11 @@ Wavefront::reserveResources()
     } else if (ii->isGlobalMem()) {
         reserveGmResource(ii);
     } else if (ii->isLocalMem()) {
-        reserveLmResource(ii);
+        if (ii->exec_mask.none()) {
+            execUnitId = localMem;
+        } else {
+            reserveLmResource(ii);
+        }
     } else if (ii->isPrivateSeg()) {
         fatal_if(ii->isScalar(),
                  "Scalar instructions can not access Private memory!!!");
