@@ -4517,29 +4517,29 @@ Decoder::decode_OP_SOP2__S_MUL_HI_I32(MachInst iFmt)
 GPUStaticInst *
 Decoder::decode_OP_SOP2__S_LSHL1_ADD_U32(MachInst iFmt)
 {
-    fatal("Trying to decode instruction without a class\n");
-    return nullptr;
+    return new Inst_SOP2__S_LSHL_ADD_U32(
+        &iFmt->iFmt_SOP2, "s_lshl1_add_u32", 1);
 }
 
 GPUStaticInst *
 Decoder::decode_OP_SOP2__S_LSHL2_ADD_U32(MachInst iFmt)
 {
-    fatal("Trying to decode instruction without a class\n");
-    return nullptr;
+    return new Inst_SOP2__S_LSHL_ADD_U32(
+        &iFmt->iFmt_SOP2, "s_lshl2_add_u32", 2);
 }
 
 GPUStaticInst *
 Decoder::decode_OP_SOP2__S_LSHL3_ADD_U32(MachInst iFmt)
 {
-    fatal("Trying to decode instruction without a class\n");
-    return nullptr;
+    return new Inst_SOP2__S_LSHL_ADD_U32(
+        &iFmt->iFmt_SOP2, "s_lshl3_add_u32", 3);
 }
 
 GPUStaticInst *
 Decoder::decode_OP_SOP2__S_LSHL4_ADD_U32(MachInst iFmt)
 {
-    fatal("Trying to decode instruction without a class\n");
-    return nullptr;
+    return new Inst_SOP2__S_LSHL_ADD_U32(
+        &iFmt->iFmt_SOP2, "s_lshl4_add_u32", 4);
 }
 
 GPUStaticInst *

@@ -1265,6 +1265,50 @@ class Inst_SOP2__S_LSHL_B32 : public Inst_SOP2
     void execute(GPUDynInstPtr) override;
 }; // Inst_SOP2__S_LSHL_B32
 
+class Inst_SOP2__S_LSHL_ADD_U32 : public Inst_SOP2
+{
+  public:
+    Inst_SOP2__S_LSHL_ADD_U32(
+        InFmt_SOP2 *, const std::string &opcode, int shift);
+    ~Inst_SOP2__S_LSHL_ADD_U32();
+
+    int
+    getNumOperands() override
+    {
+        return numDstRegOperands() + numSrcRegOperands();
+    } // getNumOperands
+
+    int
+    numDstRegOperands() override
+    {
+        return 1;
+    }
+    int
+    numSrcRegOperands() override
+    {
+        return 2;
+    }
+
+    int
+    getOperandSize(int opIdx) override
+    {
+        switch (opIdx) {
+          case 0: // ssrc_0
+          case 1: // ssrc_1
+          case 2: // sdst
+            return 4;
+          default:
+            fatal("op idx %i out of bounds\n", opIdx);
+            return -1;
+        }
+    } // getOperandSize
+
+    void execute(GPUDynInstPtr) override;
+
+  private:
+    const int shift;
+}; // Inst_SOP2__S_LSHL_ADD_U32
+
 class Inst_SOP2__S_LSHL_B64 : public Inst_SOP2
 {
   public:
