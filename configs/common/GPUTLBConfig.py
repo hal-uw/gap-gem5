@@ -35,6 +35,61 @@ import m5
 from m5.objects import *
 
 
+def _get_xcd_layout(options, n_cu):
+    num_xcds = getattr(options, "num_xcds", 1)
+    if num_xcds < 1:
+        raise ValueError("num_xcds must be positive")
+    if n_cu % num_xcds:
+        raise ValueError(
+            "num_compute_units must divide evenly across num_xcds"
+        )
+    return num_xcds, n_cu // num_xcds
+
+
+def _tlb_xcd_id(options, name, index, width, n_cu, num_xcds, cu_per_xcd):
+    if name == "l1":
+        if width >= n_cu:
+            if width % n_cu:
+                raise ValueError(
+                    "the number of L1 TLBs must divide evenly by "
+                    "num_compute_units"
+                )
+            cus_per_tlb = 1
+            tlbs_per_cu = width // n_cu
+            first_cu = index // tlbs_per_cu
+        else:
+            if n_cu % width:
+                raise ValueError(
+                    "num_compute_units must divide evenly by the number "
+                    "of L1 TLBs"
+                )
+            cus_per_tlb = n_cu // width
+            first_cu = index * cus_per_tlb
+    elif name == "sqc":
+        cus_per_tlb = options.cu_per_sqc
+        first_cu = index * cus_per_tlb
+    elif name == "scalar":
+        cus_per_tlb = options.cu_per_scalar_cache
+        first_cu = index * cus_per_tlb
+    else:
+        raise ValueError(f"unexpected L1 TLB type: {name}")
+
+    last_cu = first_cu + cus_per_tlb - 1
+    if last_cu >= n_cu:
+        raise ValueError(f"{name} TLB {index} is outside the CU range")
+
+    first_xcd = first_cu // cu_per_xcd
+    last_xcd = last_cu // cu_per_xcd
+    if first_xcd != last_xcd:
+        raise ValueError(
+            f"{name} TLB {index} spans multiple XCDs; use a "
+            "CU-partitionable TLB configuration"
+        )
+    if first_xcd >= num_xcds:
+        raise ValueError(f"{name} TLB {index} maps outside the XCD range")
+    return first_xcd
+
+
 def TLB_constructor(options, level, gpu_ctrl=None, full_system=False):
     if full_system:
         constructor_call = "VegaGPUTLB(\
@@ -110,6 +165,7 @@ def config_tlb_hierarchy(
     options, system, shader_idx, gpu_ctrl=None, full_system=False
 ):
     n_cu = options.num_compute_units
+    num_xcds, cu_per_xcd = _get_xcd_layout(options, n_cu)
 
     if options.TLB_config == "perLane":
         num_TLBs = 64 * n_cu
@@ -151,7 +207,16 @@ def config_tlb_hierarchy(
         },
     ]
 
-    L2 = [{"name": "l2", "width": 1, "TLBarray": [], "CoalescerArray": []}]
+    # The terminal L2 TLB is private to each XCD. The default one-XCD
+    # configuration therefore retains the original single L2 TLB.
+    L2 = [
+        {
+            "name": "l2",
+            "width": num_xcds,
+            "TLBarray": [],
+            "CoalescerArray": [],
+        }
+    ]
 
     TLB_hierarchy = [L1, L2]
 
@@ -268,23 +333,30 @@ def config_tlb_hierarchy(
     # cpuSidePorts of the Coalescers of the next level
     # < Modify here if you want a different configuration >
     # L1 <-> L2
-    l2_coalescer_index = 0
+    l2_coalescer_indices = [0] * num_xcds
     for TLB_type in L1:
         name = TLB_type["name"]
-        for index in range(TLB_type["width"]):
-            exec(
-                "system.%s_tlb[%d].mem_side_ports[0] = \
-                    system.l2_coalescer[0].cpu_side_ports[%d]"
-                % (name, index, l2_coalescer_index)
+        width = TLB_type["width"]
+        tlb_array = getattr(system, f"{name}_tlb")
+        for index in range(width):
+            xcd_id = _tlb_xcd_id(
+                options,
+                name,
+                index,
+                width,
+                n_cu,
+                num_xcds,
+                cu_per_xcd,
             )
-            l2_coalescer_index += 1
+            port = l2_coalescer_indices[xcd_id]
+            tlb_array[index].mem_side_ports[0] = (
+                system.l2_coalescer[xcd_id].cpu_side_ports[port]
+            )
+            l2_coalescer_indices[xcd_id] += 1
 
-    # L2 <-> L3
-    # system.l2_tlb[0].mem_side_ports[0] = system.l3_coalescer[0].cpu_side_ports[
-    #    0
-    # ]
+    # L2 is the terminal TLB level; each L2 walker performs page walks.
 
-    # L3 TLB Vega page table walker to memory for full system only
+    # Connect each terminal L2 TLB walker to memory for full system only.
     if full_system:
         for TLB_type in L2:
             name = TLB_type["name"]
