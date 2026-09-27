@@ -176,6 +176,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     // GLC is passed along because it is needed in the return path
     bool isGLCSet,      desc="Bypass GPU L1 Cache";
     bool isSLCSet,      desc="Bypass GPU L1 and L2 Cache";
+    bool isNTSet,       desc="Non-temporal GPU access";
   }
 
   structure(TBETable, external="yes") {
@@ -1068,6 +1069,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         tbe.CURequestor := in_msg.CURequestor;
         tbe.LastSender := in_msg.Requestor;
         tbe.isSLCSet := in_msg.isSLCSet;
+        tbe.isNTSet := in_msg.isNTSet;
       }
       // GPU read requests also need to track where the requestor came from
       if (in_msg.Type == CoherenceRequestType:RdBlk) {
@@ -1084,6 +1086,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
       tbe.InitialRequestTime := in_msg.InitialRequestTime;
       tbe.isGLCSet := in_msg.isGLCSet;
       tbe.isSLCSet := in_msg.isSLCSet;
+      tbe.isNTSet := in_msg.isNTSet;
       DPRINTF(RubySlicc, "t_allocateTBE in_msg: %s, tbe: %s\n", in_msg, tbe.CURequestor);
     }
   }

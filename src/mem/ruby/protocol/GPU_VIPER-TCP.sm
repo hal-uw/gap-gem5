@@ -368,6 +368,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
       peek(mandatoryQueue_in, RubyRequest) {
         out_msg.isGLCSet := in_msg.isGLCSet;
         out_msg.isSLCSet := in_msg.isSLCSet;
+        out_msg.isNTSet := in_msg.isNTSet;
       }
     }
   }
@@ -416,6 +417,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
           out_msg.InitialRequestTime := curCycle();
           out_msg.isGLCSet := in_msg.isGLCSet;
           out_msg.isSLCSet := in_msg.isSLCSet;
+          out_msg.isNTSet := in_msg.isNTSet;
         }
       }
     }
@@ -444,6 +446,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
         out_msg.instSeqNum := in_msg.instSeqNum;
         out_msg.isGLCSet := in_msg.isGLCSet;
         out_msg.isSLCSet := in_msg.isSLCSet;
+        out_msg.isNTSet := in_msg.isNTSet;
       }
     }
   }
@@ -466,6 +469,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
         out_msg.instSeqNum := in_msg.instSeqNum;
         out_msg.isGLCSet := in_msg.isGLCSet;
         out_msg.isSLCSet := in_msg.isSLCSet;
+        out_msg.isNTSet := in_msg.isNTSet;
       }
     }
   }
@@ -492,6 +496,7 @@ machine(MachineType:TCP, "GPU TCP (L1 Data Cache)")
           out_msg.instSeqNum := in_msg.instSeqNum;
           out_msg.isGLCSet := in_msg.isGLCSet;
           out_msg.isSLCSet := in_msg.isSLCSet;
+          out_msg.isNTSet := in_msg.isNTSet;
         }
       }
     }

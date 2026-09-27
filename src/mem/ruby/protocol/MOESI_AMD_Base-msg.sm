@@ -144,6 +144,7 @@ structure(CPURequestMsg, desc="...", interface="Message") {
 
   bool isGLCSet, default="false",   desc="GLC flag value in the request";
   bool isSLCSet, default="false",   desc="SLC flag value in the request";
+  bool isNTSet, default="false",    desc="NT (non-temporal) flag value in the request";
 
   bool functionalRead(Packet *pkt) {
     // Only PUTX messages contains the data block

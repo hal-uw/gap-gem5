@@ -123,6 +123,7 @@ machine(MachineType:TCC, "TCC Cache")
     bool atomicDataNoReturn,         desc="Got Atomic op and don't need return value?", default="false";
     bool isGLCSet,                   desc="Bypass L1 Cache";
     bool isSLCSet,                   desc="Bypass L1 and L2 Cache";
+    bool isNTSet,                    desc="Non-temporal access";
     WriteMask atomicWriteMask,       desc="Atomic write mask";
   }
 
@@ -561,6 +562,7 @@ machine(MachineType:TCC, "TCC Cache")
         out_msg.MessageSize := in_msg.MessageSize;
         out_msg.isGLCSet := in_msg.isGLCSet;
         out_msg.isSLCSet := in_msg.isSLCSet;
+        out_msg.isNTSet := in_msg.isNTSet;
         DPRINTF(RubySlicc, "out_msg: %s\n", out_msg);
       }
     }
@@ -706,6 +708,7 @@ machine(MachineType:TCC, "TCC Cache")
          */
         tbe.isGLCSet := in_msg.isGLCSet;
         tbe.isSLCSet := in_msg.isSLCSet;
+        tbe.isNTSet := in_msg.isNTSet;
         if(in_msg.Type == CoherenceRequestType:Atomic ||
            in_msg.Type == CoherenceRequestType:AtomicReturn ||
            in_msg.Type == CoherenceRequestType:AtomicNoReturn){
@@ -773,6 +776,7 @@ machine(MachineType:TCC, "TCC Cache")
         out_msg.instSeqNum := in_msg.instSeqNum;
         out_msg.isGLCSet := in_msg.isGLCSet;
         out_msg.isSLCSet := in_msg.isSLCSet;
+        out_msg.isNTSet := in_msg.isNTSet;
       }
     }
   }
@@ -822,6 +826,7 @@ machine(MachineType:TCC, "TCC Cache")
         out_msg.writeMask.orMask(in_msg.writeMask);
         out_msg.isGLCSet := in_msg.isGLCSet;
         out_msg.isSLCSet := in_msg.isSLCSet;
+        out_msg.isNTSet := in_msg.isNTSet;
       }
     }
   }

@@ -89,6 +89,8 @@ class RubyRequest : public Message
     // explicitly set to true in the program in order to bypass caches
     bool m_isGLCSet;
     bool m_isSLCSet;
+    // Non-temporal hint: the data is unlikely to be reused
+    bool m_isNTSet;
     bool m_isSecure;
 
     RubyRequest(Tick curTime, int block_size, RubySystem *rs, uint64_t _paddr,
@@ -122,9 +124,11 @@ class RubyRequest : public Message
         if (_pkt) {
             m_isGLCSet = m_pkt->req->isGLCSet();
             m_isSLCSet = m_pkt->req->isSLCSet();
+            m_isNTSet = m_pkt->req->isNTSet();
         } else {
             m_isGLCSet = 0;
             m_isSLCSet = 0;
+            m_isNTSet = 0;
         }
     }
 
@@ -157,9 +161,11 @@ class RubyRequest : public Message
         if (_pkt) {
             m_isGLCSet = m_pkt->req->isGLCSet();
             m_isSLCSet = m_pkt->req->isSLCSet();
+            m_isNTSet = m_pkt->req->isNTSet();
         } else {
             m_isGLCSet = 0;
             m_isSLCSet = 0;
+            m_isNTSet = 0;
         }
     }
 
@@ -197,9 +203,11 @@ class RubyRequest : public Message
         if (_pkt) {
             m_isGLCSet = m_pkt->req->isGLCSet();
             m_isSLCSet = m_pkt->req->isSLCSet();
+            m_isNTSet = m_pkt->req->isNTSet();
         } else {
             m_isGLCSet = 0;
             m_isSLCSet = 0;
+            m_isNTSet = 0;
         }
     }
 
@@ -238,10 +246,12 @@ class RubyRequest : public Message
         if (_pkt) {
             m_isGLCSet = m_pkt->req->isGLCSet();
             m_isSLCSet = m_pkt->req->isSLCSet();
+            m_isNTSet = m_pkt->req->isNTSet();
 
         } else {
             m_isGLCSet = 0;
             m_isSLCSet = 0;
+            m_isNTSet = 0;
         }
     }
 

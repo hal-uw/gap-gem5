@@ -54,6 +54,7 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
   enumeration(Event, desc="SQC Events") {
     // Core initiated
     Fetch,          desc="Fetch";
+    FetchBypass,    desc="Fetch that must miss and reload (GLC set)";
     // Mem sys initiated
     Repl,           desc="Replacing block from cache";
     Data,           desc="Received Data";
@@ -254,6 +255,9 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
           DPRINTF(RubySlicc, "%s\n", in_msg);
           if (in_msg.Type == RubyRequestType:REPLACEMENT) {
             trigger(Event:Evict, in_msg.LineAddress, cache_entry, tbe);
+          } else if (in_msg.isGLCSet) {
+            // Scalar loads with GLC set force a miss and reload.
+            trigger(Event:FetchBypass, in_msg.LineAddress, cache_entry, tbe);
           } else {
             trigger(Event:Fetch, in_msg.LineAddress, cache_entry, tbe);
           }
@@ -358,7 +362,7 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
     pr_popResponseQueue;
   }
 
-  transition(I, Fetch) {TagArrayRead, TagArrayWrite} {
+  transition(I, {Fetch, FetchBypass}) {TagArrayRead, TagArrayWrite} {
     nS_issueRdBlkS;
     uu_profileDataMiss; // since line wasn't in SQC, we missed
     p_popMandatoryQueue;
@@ -369,6 +373,14 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
     l_loadDoneHit;
     mru_updateMRU;
     uu_profileDataHit; // line was in SQC, so we hit
+    p_popMandatoryQueue;
+  }
+
+  // GLC loads drop any valid copy and refetch it from the L2
+  transition(V, FetchBypass, I) {TagArrayRead, TagArrayWrite} {
+    ic_invCache;
+    nS_issueRdBlkS;
+    uu_profileDataMiss;
     p_popMandatoryQueue;
   }
 }

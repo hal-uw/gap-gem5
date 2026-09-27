@@ -63,6 +63,7 @@ RubyRequest::print(std::ostream& out) const
   out << "Prefetch = " << m_Prefetch << " ";
   out << "isGLCSet = " << m_isGLCSet << "";
   out << "isSLCSet = " << m_isSLCSet << "";
+  out << "isNTSet = " << m_isNTSet << "";
   //  out << "Time = " << getTime() << " ";
   out << "]";
 }
