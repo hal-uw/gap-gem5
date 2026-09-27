@@ -287,15 +287,15 @@ FetchUnit::fetch(PacketPtr pkt, Wavefront *wavefront)
             SystemHubEvent *resp_event = new SystemHubEvent(pkt, this);
             assert(computeUnit.shader->systemHub);
             computeUnit.shader->systemHub->sendRequest(pkt, resp_event);
-        } else if (!computeUnit.sqcPort.sendTimingReq(pkt)) {
-            computeUnit.sqcPort.retries.push_back(
-                std::make_pair(pkt, wavefront));
-
-            DPRINTF(GPUPort, "CU%d: WF[%d][%d]: Fetch addr %#x failed!\n",
-                    computeUnit.cu_id, wavefront->simdId, wavefront->wfSlotId,
-                    pkt->req->getPaddr());
         } else {
-            DPRINTF(GPUPort, "CU%d: WF[%d][%d]: Fetch addr %#x sent!\n",
+            ComputeUnit::SQCPort::MemReqEvent *sqc_event =
+                new ComputeUnit::SQCPort::MemReqEvent(computeUnit.sqcPort,
+                                                       pkt);
+            computeUnit.schedule(
+                sqc_event, curTick() +
+                    computeUnit.cyclesToTicks(computeUnit.sqc_bus_latency));
+
+            DPRINTF(GPUPort, "CU%d: WF[%d][%d]: Fetch addr %#x scheduled!\n",
                     computeUnit.cu_id, wavefront->simdId, wavefront->wfSlotId,
                     pkt->req->getPaddr());
         }

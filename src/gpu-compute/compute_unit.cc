@@ -98,6 +98,7 @@ ComputeUnit::ComputeUnit(const Params &p)
       scalarIssuePeriod(p.scalar_issue_period),
       vrf_gm_bus_latency(p.vrf_gm_bus_latency),
       srf_scm_bus_latency(p.srf_scm_bus_latency),
+      sqc_bus_latency(p.sqc_bus_latency),
       vrf_lm_bus_latency(p.vrf_lm_bus_latency),
       perLaneTLB(p.perLaneTLB),
       prefetchDepth(p.prefetch_depth),

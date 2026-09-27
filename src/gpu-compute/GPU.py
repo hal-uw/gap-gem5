@@ -174,6 +174,9 @@ class ComputeUnit(ClockedObject):
     srf_scm_bus_latency = Param.Int(
         1, "number of cycles per use of SRF to Scalar Mem bus"
     )
+    sqc_bus_latency = Param.Int(
+        0, "number of cycles for the CU to SQC fetch request bus"
+    )
     vrf_lm_bus_latency = Param.Int(
         1, "number of cycles per use of VRF to LM bus"
     )

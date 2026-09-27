@@ -87,6 +87,12 @@ def addAmdGPUOptions(parser):
         "--wf-size", type=int, default=64, help="Wavefront size(in workitems)"
     )
     parser.add_argument(
+        "--sqc-bus-latency",
+        type=int,
+        default=1,
+        help="Cycles for the CU to SQC fetch request bus",
+    )
+    parser.add_argument(
         "--sp-bypass-path-length",
         type=int,
         default=4,
