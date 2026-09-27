@@ -3721,7 +3721,15 @@ Decoder::decode(MachInst mach_inst)
 {
     InFmt_SOP1 *enc = &mach_inst->iFmt_SOP1;
     IsaDecodeMethod method = tableDecodePrimary[enc->ENCODING];
-    return (this->*method)(mach_inst);
+    GPUStaticInst *inst = (this->*method)(mach_inst);
+
+    // The cache-policy flags depend on whether the instruction is an
+    // atomic, which is only known once the instruction is constructed.
+    if (auto vega_inst = dynamic_cast<VEGAGPUStaticInst *>(inst)) {
+        vega_inst->setCachePolicyFlags();
+    }
+
+    return inst;
 } // decode
 
 GPUStaticInst *

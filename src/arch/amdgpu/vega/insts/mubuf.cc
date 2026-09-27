@@ -2069,7 +2069,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SWAP ::Inst_MUBUF__BUFFER_ATOMIC_SWAP(
     : Inst_MUBUF(iFmt, "buffer_atomic_swap")
 {
     setFlag(AtomicExch);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2098,7 +2098,7 @@ Inst_MUBUF__BUFFER_ATOMIC_CMPSWAP ::Inst_MUBUF__BUFFER_ATOMIC_CMPSWAP(
     : Inst_MUBUF(iFmt, "buffer_atomic_cmpswap")
 {
     setFlag(AtomicCAS);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2209,7 +2209,7 @@ Inst_MUBUF__BUFFER_ATOMIC_ADD ::Inst_MUBUF__BUFFER_ATOMIC_ADD(
     : Inst_MUBUF(iFmt, "buffer_atomic_add")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2238,7 +2238,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SUB ::Inst_MUBUF__BUFFER_ATOMIC_SUB(
     : Inst_MUBUF(iFmt, "buffer_atomic_sub")
 {
     setFlag(AtomicSub);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2267,7 +2267,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SMIN ::Inst_MUBUF__BUFFER_ATOMIC_SMIN(
     : Inst_MUBUF(iFmt, "buffer_atomic_smin")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2296,7 +2296,7 @@ Inst_MUBUF__BUFFER_ATOMIC_UMIN ::Inst_MUBUF__BUFFER_ATOMIC_UMIN(
     : Inst_MUBUF(iFmt, "buffer_atomic_umin")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2325,7 +2325,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SMAX ::Inst_MUBUF__BUFFER_ATOMIC_SMAX(
     : Inst_MUBUF(iFmt, "buffer_atomic_smax")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2354,7 +2354,7 @@ Inst_MUBUF__BUFFER_ATOMIC_UMAX ::Inst_MUBUF__BUFFER_ATOMIC_UMAX(
     : Inst_MUBUF(iFmt, "buffer_atomic_umax")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2383,7 +2383,7 @@ Inst_MUBUF__BUFFER_ATOMIC_AND ::Inst_MUBUF__BUFFER_ATOMIC_AND(
     : Inst_MUBUF(iFmt, "buffer_atomic_and")
 {
     setFlag(AtomicAnd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2411,7 +2411,7 @@ Inst_MUBUF__BUFFER_ATOMIC_OR ::Inst_MUBUF__BUFFER_ATOMIC_OR(InFmt_MUBUF *iFmt)
     : Inst_MUBUF(iFmt, "buffer_atomic_or")
 {
     setFlag(AtomicOr);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2440,7 +2440,7 @@ Inst_MUBUF__BUFFER_ATOMIC_XOR ::Inst_MUBUF__BUFFER_ATOMIC_XOR(
     : Inst_MUBUF(iFmt, "buffer_atomic_xor")
 {
     setFlag(AtomicXor);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2469,7 +2469,7 @@ Inst_MUBUF__BUFFER_ATOMIC_INC ::Inst_MUBUF__BUFFER_ATOMIC_INC(
     : Inst_MUBUF(iFmt, "buffer_atomic_inc")
 {
     setFlag(AtomicInc);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2498,7 +2498,7 @@ Inst_MUBUF__BUFFER_ATOMIC_DEC ::Inst_MUBUF__BUFFER_ATOMIC_DEC(
     : Inst_MUBUF(iFmt, "buffer_atomic_dec")
 {
     setFlag(AtomicDec);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2529,7 +2529,7 @@ Inst_MUBUF__BUFFER_ATOMIC_PK_ADD_BF16 ::Inst_MUBUF__BUFFER_ATOMIC_PK_ADD_BF16(
     setFlag(AtomicPkAddBF16);
 
     // MI300 spec: "Float atomics must set SC[0]=0 (no return value)."
-    panic_if(instData.GLC, "Saw float atomic with return set!");
+    panic_if(instData.SC0, "Saw float atomic with return set!");
 
     setFlag(AtomicNoReturn);
 } // Inst_MUBUF__BUFFER_ATOMIC_PK_ADD_BF16
@@ -2611,7 +2611,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SWAP_X2 ::Inst_MUBUF__BUFFER_ATOMIC_SWAP_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_swap_x2")
 {
     setFlag(AtomicExch);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2640,7 +2640,7 @@ Inst_MUBUF__BUFFER_ATOMIC_CMPSWAP_X2 ::Inst_MUBUF__BUFFER_ATOMIC_CMPSWAP_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_cmpswap_x2")
 {
     setFlag(AtomicCAS);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2671,7 +2671,7 @@ Inst_MUBUF__BUFFER_ATOMIC_ADD_X2 ::Inst_MUBUF__BUFFER_ATOMIC_ADD_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_add_x2")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2700,7 +2700,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SUB_X2 ::Inst_MUBUF__BUFFER_ATOMIC_SUB_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_sub_x2")
 {
     setFlag(AtomicSub);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2729,7 +2729,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SMIN_X2 ::Inst_MUBUF__BUFFER_ATOMIC_SMIN_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_smin_x2")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2758,7 +2758,7 @@ Inst_MUBUF__BUFFER_ATOMIC_UMIN_X2 ::Inst_MUBUF__BUFFER_ATOMIC_UMIN_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_umin_x2")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2787,7 +2787,7 @@ Inst_MUBUF__BUFFER_ATOMIC_SMAX_X2 ::Inst_MUBUF__BUFFER_ATOMIC_SMAX_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_smax_x2")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2816,7 +2816,7 @@ Inst_MUBUF__BUFFER_ATOMIC_UMAX_X2 ::Inst_MUBUF__BUFFER_ATOMIC_UMAX_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_umax_x2")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2845,7 +2845,7 @@ Inst_MUBUF__BUFFER_ATOMIC_AND_X2 ::Inst_MUBUF__BUFFER_ATOMIC_AND_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_and_x2")
 {
     setFlag(AtomicAnd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2874,7 +2874,7 @@ Inst_MUBUF__BUFFER_ATOMIC_OR_X2 ::Inst_MUBUF__BUFFER_ATOMIC_OR_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_or_x2")
 {
     setFlag(AtomicOr);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2901,7 +2901,7 @@ Inst_MUBUF__BUFFER_ATOMIC_XOR_X2 ::Inst_MUBUF__BUFFER_ATOMIC_XOR_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_xor_x2")
 {
     setFlag(AtomicXor);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2930,7 +2930,7 @@ Inst_MUBUF__BUFFER_ATOMIC_INC_X2 ::Inst_MUBUF__BUFFER_ATOMIC_INC_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_inc_x2")
 {
     setFlag(AtomicInc);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -2959,7 +2959,7 @@ Inst_MUBUF__BUFFER_ATOMIC_DEC_X2 ::Inst_MUBUF__BUFFER_ATOMIC_DEC_X2(
     : Inst_MUBUF(iFmt, "buffer_atomic_dec_x2")
 {
     setFlag(AtomicDec);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);

@@ -497,6 +497,8 @@ Inst_SMEM::Inst_SMEM(InFmt_SMEM *iFmt, const std::string &opcode)
     extData = ((InFmt_SMEM_1 *)iFmt)[1];
     _srcLiteral = *reinterpret_cast<uint32_t *>(&iFmt[1]);
 
+    // SMEM has a single GLC bit (not renamed SC0 on gfx942), which forces
+    // a miss and reload in the scalar cache.
     if (instData.GLC) {
         setFlag(GloballyCoherent);
     }
@@ -1416,18 +1418,16 @@ Inst_MUBUF::Inst_MUBUF(InFmt_MUBUF *iFmt, const std::string &opcode)
     // copy second instruction DWORD
     extData = ((InFmt_MUBUF_1 *)iFmt)[1];
     _srcLiteral = *reinterpret_cast<uint32_t *>(&iFmt[1]);
-
-    if (instData.GLC) {
-        setFlag(GloballyCoherent);
-    }
-
-    if (instData.SLC) {
-        setFlag(SystemCoherent);
-    }
 } // Inst_MUBUF
 
 Inst_MUBUF::~Inst_MUBUF()
 {} // ~Inst_MUBUF
+
+void
+Inst_MUBUF::setCachePolicyFlags()
+{
+    setCachePolicyBits(instData.SC0, instData.SC1, instData.NT);
+}
 
 void
 Inst_MUBUF::initOperandInfo()
@@ -1497,6 +1497,18 @@ Inst_MUBUF::generateDisassembly()
         dis_stream << ", offset:" << instData.OFFSET;
     }
 
+    if (instData.SC0) {
+        dis_stream << " sc0";
+    }
+
+    if (instData.NT) {
+        dis_stream << " nt";
+    }
+
+    if (instData.SC1) {
+        dis_stream << " sc1";
+    }
+
     disassembly = dis_stream.str();
 }
 
@@ -1510,18 +1522,16 @@ Inst_MTBUF::Inst_MTBUF(InFmt_MTBUF *iFmt, const std::string &opcode)
     // copy second instruction DWORD
     extData = ((InFmt_MTBUF_1 *)iFmt)[1];
     _srcLiteral = *reinterpret_cast<uint32_t *>(&iFmt[1]);
-
-    if (instData.GLC) {
-        setFlag(GloballyCoherent);
-    }
-
-    if (extData.SLC) {
-        setFlag(SystemCoherent);
-    }
 } // Inst_MTBUF
 
 Inst_MTBUF::~Inst_MTBUF()
 {} // ~Inst_MTBUF
+
+void
+Inst_MTBUF::setCachePolicyFlags()
+{
+    setCachePolicyBits(instData.SC0, extData.SC1, extData.NT);
+}
 
 void
 Inst_MTBUF::initOperandInfo()
@@ -1582,18 +1592,16 @@ Inst_MIMG::Inst_MIMG(InFmt_MIMG *iFmt, const std::string &opcode)
     // copy second instruction DWORD
     extData = ((InFmt_MIMG_1 *)iFmt)[1];
     _srcLiteral = *reinterpret_cast<uint32_t *>(&iFmt[1]);
-
-    if (instData.GLC) {
-        setFlag(GloballyCoherent);
-    }
-
-    if (instData.SLC) {
-        setFlag(SystemCoherent);
-    }
 } // Inst_MIMG
 
 Inst_MIMG::~Inst_MIMG()
 {} // ~Inst_MIMG
+
+void
+Inst_MIMG::setCachePolicyFlags()
+{
+    setCachePolicyBits(instData.SC0, instData.SC1, instData.NT);
+}
 
 void
 Inst_MIMG::initOperandInfo()
@@ -1707,23 +1715,16 @@ Inst_FLAT::Inst_FLAT(InFmt_FLAT *iFmt, const std::string &opcode)
     // copy second instruction DWORD
     extData = ((InFmt_FLAT_1 *)iFmt)[1];
     _srcLiteral = *reinterpret_cast<uint32_t *>(&iFmt[1]);
-
-    // SC0 (legacy GLC) alone signals globally-coherent/bypass on pre-gfx940
-    // encodings. On gfx940+, SC1 (encoded at bit 25, unused pre-gfx940) also
-    // signals a CU-cache bypass -- e.g. Device/System scope loads and
-    // stores per the CDNA3 ISA guide's Load/Store Controls tables -- so
-    // check both bits rather than just SC0.
-    if (instData.SC1) {
-        setFlag(GloballyCoherent);
-    }
-
-    if (instData.SC0 && instData.SC1) {
-        setFlag(SystemCoherent);
-    }
 } // Inst_FLAT
 
 Inst_FLAT::~Inst_FLAT()
 {} // ~Inst_FLAT
+
+void
+Inst_FLAT::setCachePolicyFlags()
+{
+    setCachePolicyBits(instData.SC0, instData.SC1, instData.NT);
+}
 
 void
 Inst_FLAT::initOperandInfo()

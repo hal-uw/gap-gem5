@@ -1844,16 +1844,17 @@ struct InFmt_INST
 struct InFmt_MIMG
 {
     unsigned int OPM : 1;
-    unsigned int pad_1_7 : 7;
+    unsigned int pad_1_6 : 6;
+    unsigned int SC1 : 1;  // scope bit 1 (gfx90a+; unused/0 before)
     unsigned int DMASK : 4;
     unsigned int UNRM : 1;
-    unsigned int GLC : 1;
+    unsigned int SC0 : 1;  // aka GLC; scope bit 0
     unsigned int DA : 1;
     unsigned int A16 : 1;
     unsigned int TFE : 1;
     unsigned int LWE : 1;
     unsigned int OP : 7;
-    unsigned int SLC : 1;
+    unsigned int NT : 1;   // aka SLC; non-temporal
     unsigned int ENCODING : 6;
 };
 
@@ -1872,7 +1873,7 @@ struct InFmt_MTBUF
     unsigned int OFFSET : 12;
     unsigned int OFFEN : 1;
     unsigned int IDXEN : 1;
-    unsigned int GLC : 1;
+    unsigned int SC0 : 1;  // aka GLC; scope bit 0
     unsigned int OP : 4;
     unsigned int DFMT : 4;
     unsigned int NFMT : 3;
@@ -1884,8 +1885,8 @@ struct InFmt_MTBUF_1
     unsigned int VADDR : 8;
     unsigned int VDATA : 8;
     unsigned int SRSRC : 5;
-    unsigned int pad_21 : 1;
-    unsigned int SLC : 1;
+    unsigned int SC1 : 1;  // scope bit 1 (gfx90a+; unused/0 before)
+    unsigned int NT : 1;   // aka SLC; non-temporal
     unsigned int TFE : 1;
     unsigned int SOFFSET : 8;
 };
@@ -1895,10 +1896,10 @@ struct InFmt_MUBUF
     unsigned int OFFSET : 12;
     unsigned int OFFEN : 1;
     unsigned int IDXEN : 1;
-    unsigned int GLC : 1;
-    unsigned int pad_15 : 1;
+    unsigned int SC0 : 1;  // aka GLC; scope bit 0
+    unsigned int SC1 : 1;  // scope bit 1 (gfx90a+; unused/0 before)
     unsigned int LDS : 1;
-    unsigned int SLC : 1;
+    unsigned int NT : 1;   // aka SLC; non-temporal
     unsigned int OP : 7;
     unsigned int pad_25 : 1;
     unsigned int ENCODING : 6;

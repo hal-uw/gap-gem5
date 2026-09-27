@@ -53,5 +53,36 @@ VEGAGPUStaticInst::panicUnimplemented() const
 {
     fatal("Encountered unimplemented VEGA instruction: %s\n", _opcode);
 }
+
+void
+VEGAGPUStaticInst::setCachePolicyBits(bool sc0, bool sc1, bool nt)
+{
+    // gfx942 (CDNA3) cache-policy bits, per the CDNA3 ISA guide's memory
+    // scope controls. For loads and stores SC1:SC0 is the scope: wavefront
+    // (0), workgroup (1), device (2) or system (3). A workgroup runs on a
+    // single CU, so only device and system scope bypass the CU (L1) cache,
+    // and only system scope also bypasses the L2. For atomics SC0 requests
+    // the pre-op value (the subclass sets AtomicReturn from it) and SC1
+    // alone selects system scope. NT is a non-temporal (streaming) hint
+    // that is passed to the memory system for the caches to act on.
+    if (nt) {
+        setFlag(NonTemporal);
+    }
+
+    if (isAtomic()) {
+        if (sc1) {
+            setFlag(GloballyCoherent);
+            setFlag(SystemCoherent);
+        }
+    } else {
+        if (sc1) {
+            setFlag(GloballyCoherent);
+        }
+
+        if (sc0 && sc1) {
+            setFlag(SystemCoherent);
+        }
+    }
+}
 } // namespace VegaISA
 } // namespace gem5

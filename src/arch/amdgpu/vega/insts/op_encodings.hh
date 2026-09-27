@@ -1171,6 +1171,8 @@ class Inst_MUBUF : public VEGAGPUStaticInst
     Inst_MUBUF(InFmt_MUBUF *, const std::string &opcode);
     ~Inst_MUBUF();
 
+    void setCachePolicyFlags() override;
+
     int instSize() const override;
     void generateDisassembly() override;
 
@@ -1432,6 +1434,8 @@ class Inst_MTBUF : public VEGAGPUStaticInst
     Inst_MTBUF(InFmt_MTBUF *, const std::string &opcode);
     ~Inst_MTBUF();
 
+    void setCachePolicyFlags() override;
+
     int instSize() const override;
     void initOperandInfo() override;
 
@@ -1450,6 +1454,8 @@ class Inst_MIMG : public VEGAGPUStaticInst
   public:
     Inst_MIMG(InFmt_MIMG *, const std::string &opcode);
     ~Inst_MIMG();
+
+    void setCachePolicyFlags() override;
 
     int instSize() const override;
     void initOperandInfo() override;
@@ -1482,6 +1488,8 @@ class Inst_FLAT : public VEGAGPUStaticInst
   public:
     Inst_FLAT(InFmt_FLAT *, const std::string &opcode);
     ~Inst_FLAT();
+
+    void setCachePolicyFlags() override;
 
     int instSize() const override;
     void generateDisassembly() override;

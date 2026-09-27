@@ -349,7 +349,7 @@ Inst_MIMG__IMAGE_ATOMIC_SWAP::Inst_MIMG__IMAGE_ATOMIC_SWAP(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_swap")
 {
     setFlag(AtomicExch);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -378,7 +378,7 @@ Inst_MIMG__IMAGE_ATOMIC_CMPSWAP::Inst_MIMG__IMAGE_ATOMIC_CMPSWAP(
     : Inst_MIMG(iFmt, "image_atomic_cmpswap")
 {
     setFlag(AtomicCAS);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -408,7 +408,7 @@ Inst_MIMG__IMAGE_ATOMIC_ADD::Inst_MIMG__IMAGE_ATOMIC_ADD(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_add")
 {
     setFlag(AtomicAdd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -436,7 +436,7 @@ Inst_MIMG__IMAGE_ATOMIC_SUB::Inst_MIMG__IMAGE_ATOMIC_SUB(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_sub")
 {
     setFlag(AtomicSub);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -464,7 +464,7 @@ Inst_MIMG__IMAGE_ATOMIC_SMIN::Inst_MIMG__IMAGE_ATOMIC_SMIN(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_smin")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -492,7 +492,7 @@ Inst_MIMG__IMAGE_ATOMIC_UMIN::Inst_MIMG__IMAGE_ATOMIC_UMIN(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_umin")
 {
     setFlag(AtomicMin);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -520,7 +520,7 @@ Inst_MIMG__IMAGE_ATOMIC_SMAX::Inst_MIMG__IMAGE_ATOMIC_SMAX(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_smax")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -548,7 +548,7 @@ Inst_MIMG__IMAGE_ATOMIC_UMAX::Inst_MIMG__IMAGE_ATOMIC_UMAX(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_umax")
 {
     setFlag(AtomicMax);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -576,7 +576,7 @@ Inst_MIMG__IMAGE_ATOMIC_AND::Inst_MIMG__IMAGE_ATOMIC_AND(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_and")
 {
     setFlag(AtomicAnd);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -604,7 +604,7 @@ Inst_MIMG__IMAGE_ATOMIC_OR::Inst_MIMG__IMAGE_ATOMIC_OR(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_or")
 {
     setFlag(AtomicOr);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -632,7 +632,7 @@ Inst_MIMG__IMAGE_ATOMIC_XOR::Inst_MIMG__IMAGE_ATOMIC_XOR(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_xor")
 {
     setFlag(AtomicXor);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -660,7 +660,7 @@ Inst_MIMG__IMAGE_ATOMIC_INC::Inst_MIMG__IMAGE_ATOMIC_INC(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_inc")
 {
     setFlag(AtomicInc);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);
@@ -688,7 +688,7 @@ Inst_MIMG__IMAGE_ATOMIC_DEC::Inst_MIMG__IMAGE_ATOMIC_DEC(InFmt_MIMG *iFmt)
     : Inst_MIMG(iFmt, "image_atomic_dec")
 {
     setFlag(AtomicDec);
-    if (instData.GLC) {
+    if (instData.SC0) {
         setFlag(AtomicReturn);
     } else {
         setFlag(AtomicNoReturn);

@@ -97,8 +97,17 @@ class VEGAGPUStaticInst : public GPUStaticInst
         return _srcLiteral;
     }
 
+    /**
+     * Set the GloballyCoherent/SystemCoherent flags from the encoding's
+     * cache-policy bits. The decoder calls this once the instruction is
+     * fully constructed, because atomics interpret the bits differently
+     * than loads and stores and their atomic flags are set by subclasses.
+     */
+    virtual void setCachePolicyFlags() {}
+
   protected:
     void panicUnimplemented() const;
+    void setCachePolicyBits(bool sc0, bool sc1, bool nt);
 
     /**
      * if the instruction has a src literal - an immediate
