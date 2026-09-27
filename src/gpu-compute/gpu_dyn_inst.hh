@@ -340,6 +340,7 @@ class GPUDynInst : public GPUExecContext
 
     bool isGloballyCoherent() const;
     bool isSystemCoherent() const;
+    bool isNonTemporal() const;
 
     bool isI8() const;
     bool isF16() const;
@@ -402,6 +403,10 @@ class GPUDynInst : public GPUExecContext
 
         if (isSystemCoherent()) {
             req->setCacheCoherenceFlags(Request::SLC_BIT);
+        }
+
+        if (isNonTemporal()) {
+            req->setCacheCoherenceFlags(Request::NT_BIT);
         }
 
         if (isAtomicRet()) {

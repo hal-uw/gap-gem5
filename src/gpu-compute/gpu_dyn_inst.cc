@@ -767,6 +767,12 @@ GPUDynInst::isSystemCoherent() const
 }
 
 bool
+GPUDynInst::isNonTemporal() const
+{
+    return _staticInst->isNonTemporal();
+}
+
+bool
 GPUDynInst::isI8() const
 {
     return _staticInst->isI8();

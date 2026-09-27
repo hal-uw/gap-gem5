@@ -1179,6 +1179,7 @@ class Packet : public Printable, public Extensible<Packet>
      */
     bool isGLCSet() const { return req->isGLCSet();}
     bool isSLCSet() const { return req->isSLCSet();}
+    bool isNTSet() const { return req->isNTSet();}
 
     /**
      * Check if packet corresponds to a given block-aligned address and

@@ -463,6 +463,12 @@ class GPUStaticInst : public GPUStaticInstFlags
         return _flags[SystemCoherent];
     }
 
+    bool
+    isNonTemporal() const
+    {
+        return _flags[NonTemporal];
+    }
+
     // Floating-point instructions
     bool
     isI8() const
