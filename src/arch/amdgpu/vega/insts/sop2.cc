@@ -956,6 +956,39 @@ Inst_SOP2__S_LSHL_B32::execute(GPUDynInstPtr gpuDynInst)
     sdst.write();
     scc.write();
 } // execute
+
+// --- Inst_SOP2__S_LSHL_ADD_U32 class methods ---
+
+Inst_SOP2__S_LSHL_ADD_U32::Inst_SOP2__S_LSHL_ADD_U32(
+    InFmt_SOP2 *iFmt, const std::string &opcode, int shift)
+    : Inst_SOP2(iFmt, opcode), shift(shift)
+{
+    setFlag(ALU);
+}
+
+Inst_SOP2__S_LSHL_ADD_U32::~Inst_SOP2__S_LSHL_ADD_U32()
+{}
+
+// D.u = (S0.u << shift) + S1.u;
+// SCC = 1 if result is non-zero.
+void
+Inst_SOP2__S_LSHL_ADD_U32::execute(GPUDynInstPtr gpuDynInst)
+{
+    ConstScalarOperandU32 src0(gpuDynInst, instData.SSRC0);
+    ConstScalarOperandU32 src1(gpuDynInst, instData.SSRC1);
+    ScalarOperandU32 sdst(gpuDynInst, instData.SDST);
+    ScalarOperandU32 scc(gpuDynInst, REG_SCC);
+
+    src0.read();
+    src1.read();
+
+    sdst = (src0.rawData() << shift) + src1.rawData();
+    scc = sdst.rawData() ? 1 : 0;
+
+    sdst.write();
+    scc.write();
+} // execute
+
 // --- Inst_SOP2__S_LSHL_B64 class methods ---
 
 Inst_SOP2__S_LSHL_B64::Inst_SOP2__S_LSHL_B64(InFmt_SOP2 *iFmt)

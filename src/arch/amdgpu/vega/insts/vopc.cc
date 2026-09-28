@@ -746,7 +746,42 @@ Inst_VOPC__V_CMP_O_F16::execute(GPUDynInstPtr gpuDynInst)
     src0.readSrc();
     src1.readSrc();
 
-    panic_if(isSDWAInst(), "SDWA not implemented for %s", _opcode);
+    if (isSDWAInst()) {
+        const auto &sdwa = extData.iFmt_VOP_SDWAB;
+        // ABS and NEG only affect the sign, so they cannot change whether
+        // an FP16 bit pattern is a NaN. SEXT is invalid for FP16 sources.
+        panic_if(sdwa.SRC0_SEXT || sdwa.SRC1_SEXT,
+                 "SDWA sign extension not supported for %s", _opcode);
+
+        const int src0_idx = sdwa.SRC0 + (sdwa.S0 ? 0 : REG_VGPR_MIN);
+        const int src1_idx = instData.VSRC1 +
+                             (sdwa.S1 ? 0 : REG_VGPR_MIN);
+        const int sdst_idx = sdwa.SD ? int(sdwa.SDST) : REG_VCC_LO;
+        ConstVecOperandU32 sdwa_src0(gpuDynInst, src0_idx);
+        ConstVecOperandU32 sdwa_src1(gpuDynInst, src1_idx);
+        ScalarOperandU64 sdst(gpuDynInst, sdst_idx);
+        sdwa_src0.readSrc();
+        sdwa_src1.readSrc();
+
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (!wf->execMask(lane))
+                continue;
+            const uint16_t S0 = sdwabSelect<uint32_t>(
+                sdwa_src0[lane], (SDWASelVals)sdwa.SRC0_SEL, false, false,
+                false);
+            const uint16_t S1 = sdwabSelect<uint32_t>(
+                sdwa_src1[lane], (SDWASelVals)sdwa.SRC1_SEL, false, false,
+                false);
+            const bool isS0NaN = (S0 & 0x7C00) == 0x7C00 &&
+                                 (S0 & 0x03FF) != 0;
+            const bool isS1NaN = (S1 & 0x7C00) == 0x7C00 &&
+                                 (S1 & 0x03FF) != 0;
+            sdst.setBit(lane, !isS0NaN && !isS1NaN);
+        }
+        sdst.write();
+        return;
+    }
+
     panic_if(isDPPInst(), "DPP not supported for %s", _opcode);
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {

@@ -271,6 +271,34 @@ class Inst_VOP2 : public VEGAGPUStaticInst
     InstFormat extData;
     uint32_t varSize;
 
+    bool
+    sdwaPreservesDst() const
+    {
+        return isSDWAInst() &&
+               extData.iFmt_VOP_SDWA.DST_U == SDWA_UNUSED_PRESERVE &&
+               extData.iFmt_VOP_SDWA.DST_SEL != SDWA_DWORD;
+    }
+
+    void
+    initSdwaOperandInfo()
+    {
+        const auto &sdwa = extData.iFmt_VOP_SDWA;
+        const int src0 = sdwa.SRC0 + (sdwa.S0 ? 0 : REG_VGPR_MIN);
+        const int src1 = instData.VSRC1 + (sdwa.S1 ? 0 : REG_VGPR_MIN);
+        srcOps.emplace_back(src0, 4, true, isScalarReg(src0),
+                            isVectorReg(src0), false);
+        srcOps.emplace_back(src1, 4, true, isScalarReg(src1),
+                            isVectorReg(src1), false);
+        if (readsVCC())
+            srcOps.emplace_back(REG_VCC_LO, 8, true, true, false, false);
+        if (sdwaPreservesDst())
+            srcOps.emplace_back(int(instData.VDST), 4, true, false, true,
+                                false);
+        dstOps.emplace_back(int(instData.VDST), 4, false, false, true, false);
+        assert(srcOps.size() == numSrcRegOperands());
+        assert(dstOps.size() == numDstRegOperands());
+    }
+
     template <typename T>
     T
     sdwaSrcHelper(GPUDynInstPtr gpuDynInst, T &src1)
