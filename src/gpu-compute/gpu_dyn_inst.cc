@@ -820,6 +820,12 @@ GPUDynInst::isMFMA() const
     return _staticInst->isMFMA();
 }
 
+bool
+GPUDynInst::isPackedMath() const
+{
+    return _staticInst->isPackedMath();
+}
+
 void
 GPUDynInst::doApertureCheck(const VectorMask &mask)
 {

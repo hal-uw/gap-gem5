@@ -1181,6 +1181,7 @@ Inst_VOP3P::Inst_VOP3P(InFmt_VOP3P *iFmt, const std::string &opcode)
     instData = iFmt[0];
     // copy second instruction DWORD
     extData = ((InFmt_VOP3P_1 *)iFmt)[1];
+    setFlag(PackedMath);
 } // Inst_VOP3P
 
 Inst_VOP3P::~Inst_VOP3P()

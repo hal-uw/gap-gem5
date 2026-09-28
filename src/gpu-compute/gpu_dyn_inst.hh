@@ -351,6 +351,7 @@ class GPUDynInst : public GPUExecContext
     bool isMAC() const;
     bool isMAD() const;
     bool isMFMA() const;
+    bool isPackedMath() const;
 
     // for FLAT memory ops. check the segment address
     // against the APE registers to see if it falls

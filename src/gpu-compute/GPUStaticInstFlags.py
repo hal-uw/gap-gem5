@@ -110,5 +110,6 @@ class GPUStaticInstFlags(Enum):
         "MAC",  # MAC
         "MAD",  # MAD
         "MFMA",  # MFMA
+        "PackedMath",  # packed math (VOP3P), e.g. v_pk_fma_f32
         "NoAddr",  # Request has no address but goes to SQC for timing
     ]

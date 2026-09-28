@@ -514,6 +514,12 @@ class GPUStaticInst : public GPUStaticInstFlags
     }
 
     bool
+    isPackedMath() const
+    {
+        return _flags[PackedMath];
+    }
+
+    bool
     hasNoAddr() const
     {
         return _flags[NoAddr];
