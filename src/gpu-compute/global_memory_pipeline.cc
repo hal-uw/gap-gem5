@@ -33,6 +33,7 @@
 #include "gpu-compute/global_memory_pipeline.hh"
 #include <algorithm>
 #include <cinttypes>
+#include "base/intmath.hh"
 #include "debug/GPUCoalescer.hh"
 #include "debug/GPUMem.hh"
 #include "debug/GPUReg.hh"
@@ -180,25 +181,21 @@ GlobalMemPipeline::exec()
         computeUnit.shader->sampleInstRoundTrip(m->getRoundTripTime());
         computeUnit.shader->sampleLineRoundTrip(m->getLineAddressTime());
 
-        // Mark write bus busy for appropriate amount of time. Scale by
-        // the instruction's per-lane data width, but only up to 8 bytes
-        // (dword/dwordx2) -- that's as far as this linear bytes/busWidth
-        // model has been validated (l1_bw_32f_unroll, l1_bw_64f both hit
-        // target with it). Wider loads (dwordx4+, e.g. l1_bw_128) are
-        // capped at the 8-byte rate rather than continuing to scale
-        // linearly: l1_bw_128 was already close to target back when this
-        // bus had ~zero occupancy cost, and letting the charge keep
-        // doubling past 8B made it 2x too slow. This is a calibration
-        // hack, not a validated model of the real per-width bus cost
-        // above 8 bytes/lane -- revisit if a fourth load width is added.
-        constexpr int maxScaledOperandSize = 8;
-        if (m->isLoad()) {
-            int scaledOperandSize = std::min(m->maxOperandSize(),
-                                              maxScaledOperandSize);
-            computeUnit.glbMemToVrfBus.set(
-                    computeUnit.cyclesToTicks(Cycles(
-                            computeUnit.wfSize()*scaledOperandSize/
-                            (double)(computeUnit.coalescerToVrfBusWidth))));
+        // Mark the coalescer->VRF (L1 data cache to core) bus busy while
+        // the returned data is written to the VRF: the vector bytes the
+        // instruction writes per lane (as counted for VRF writes in
+        // VectorRegisterFile::scheduleWriteOperandsFromLoad) times its
+        // active lanes, divided by the bus width, rounded up. This covers
+        // loads and atomics that return data.
+        constexpr int maxChargedBytesPerLane = 8;
+        if (m->isLoad() || m->isAtomicRet()) {
+            int bytesPerLane = std::min(
+                    m->numDstVecDWords() * (int)sizeof(uint32_t),
+                    maxChargedBytesPerLane);
+            int bytes = bytesPerLane * m->exec_mask.count();
+            computeUnit.glbMemToVrfBus.set(computeUnit.cyclesToTicks(
+                    Cycles(divCeil(bytes,
+                                   computeUnit.coalescerToVrfBusWidth))));
         } else {
             computeUnit.glbMemToVrfBus.set(m->time);
         }
