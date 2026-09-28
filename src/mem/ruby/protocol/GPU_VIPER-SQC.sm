@@ -55,6 +55,7 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
     // Core initiated
     Fetch,          desc="Fetch";
     FetchBypass,    desc="Fetch that must miss and reload (GLC set)";
+    NoAddr,         desc="Request without an address (e.g. s_memtime)";
     // Mem sys initiated
     Repl,           desc="Replacing block from cache";
     Data,           desc="Received Data";
@@ -247,11 +248,15 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
     if (mandatoryQueue_in.isReady(clockEdge())) {
       peek(mandatoryQueue_in, RubyRequest, block_on="LineAddress") {
         Entry cache_entry := getCacheEntry(in_msg.LineAddress);
+        TBE tbe := TBEs.lookup(in_msg.LineAddress);
         if (in_msg.Type == RubyRequestType:hasNoAddr) {
-          sequencer.readCallback(in_msg.LineAddress, cache_entry.DataBlk, true, MachineType:L1Cache);
-          mandatoryQueue_in.dequeue(clockEdge());
+          // Handle requests without an address (s_memtime) through a
+          // transition, like every other request, so that the controller
+          // keeps servicing the queue in this wakeup. Completing them inline
+          // ended the wakeup and stranded any other request that became
+          // ready in the same cycle.
+          trigger(Event:NoAddr, in_msg.LineAddress, cache_entry, tbe);
         } else {
-          TBE tbe := TBEs.lookup(in_msg.LineAddress);
           DPRINTF(RubySlicc, "%s\n", in_msg);
           if (in_msg.Type == RubyRequestType:REPLACEMENT) {
             trigger(Event:Evict, in_msg.LineAddress, cache_entry, tbe);
@@ -311,6 +316,15 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
     assert(is_valid(cache_entry));
     sequencer.readCallback(address, cache_entry.DataBlk, false, MachineType:L1Cache);
     APPEND_TRANSITION_COMMENT(cache_entry.DataBlk);
+  }
+
+  action(nad_noAddrDone, "nad", desc="complete a request without an address") {
+    // The request reads no cache data (e.g. s_memtime), and there is usually
+    // no cache entry for its line, so do not touch cache_entry.
+    peek(mandatoryQueue_in, RubyRequest) {
+      DataBlock unused_blk := in_msg.WTData;
+      sequencer.readCallback(address, unused_blk, true, MachineType:L1Cache);
+    }
   }
 
   action(inv_invDone, "inv", desc="local inv done") {
@@ -381,6 +395,12 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
     ic_invCache;
     nS_issueRdBlkS;
     uu_profileDataMiss;
+    p_popMandatoryQueue;
+  }
+
+  // Requests without an address do not touch the cache
+  transition({I, V}, NoAddr) {
+    nad_noAddrDone;
     p_popMandatoryQueue;
   }
 }
