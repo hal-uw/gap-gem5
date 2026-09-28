@@ -329,6 +329,8 @@ class ComputeUnit : public ClockedObject
     Cycles vrf_gm_bus_latency;
     // SRF to Scalar Mem Bus latency
     Cycles srf_scm_bus_latency;
+    // CU to SQC fetch request bus latency
+    Cycles sqc_bus_latency;
     // VRF to LM Bus latency
     Cycles vrf_lm_bus_latency;
 

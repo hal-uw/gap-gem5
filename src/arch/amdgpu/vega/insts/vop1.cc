@@ -259,12 +259,30 @@ Inst_VOP1__V_CVT_F32_I32::execute(GPUDynInstPtr gpuDynInst)
 
     src.readSrc();
 
-    panic_if(isSDWAInst(), "SDWA not implemented for %s", _opcode);
     panic_if(isDPPInst(), "DPP not implemented for %s", _opcode);
 
-    for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
-        if (wf->execMask(lane)) {
-            vdst[lane] = (VecElemF32)src[lane];
+    if (isSDWAInst()) {
+        VecOperandU32 src0_sdwa(gpuDynInst, extData.iFmt_VOP_SDWA.SRC0);
+        VecOperandU32 origSrc0_sdwa(gpuDynInst,
+                                    extData.iFmt_VOP_SDWA.SRC0);
+        VecOperandF32 origVdst(gpuDynInst, instData.VDST);
+
+        src0_sdwa.read();
+        origSrc0_sdwa.read();
+        processSDWA_src(extData.iFmt_VOP_SDWA, src0_sdwa, origSrc0_sdwa);
+
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (wf->execMask(lane)) {
+                vdst[lane] = (VecElemF32)(VecElemI32)src0_sdwa[lane];
+            }
+        }
+
+        processSDWA_dst(extData.iFmt_VOP_SDWA, vdst, origVdst);
+    } else {
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (wf->execMask(lane)) {
+                vdst[lane] = (VecElemF32)src[lane];
+            }
         }
     }
 

@@ -94,6 +94,9 @@ def TLB_constructor(options, level, gpu_ctrl=None, full_system=False):
     if full_system:
         constructor_call = "VegaGPUTLB(\
                 gpu_device = gpu_ctrl, \
+                walker = VegaPagetableWalker(\
+                    pwc_fetch_bytes = getattr(\
+                        options, 'pwc_fetch_bytes', 64)), \
                 size = options.L%(level)dTLBentries, \
                 assoc = options.L%(level)dTLBassoc, \
                 hitLatency = options.L%(level)dAccessLatency,\
@@ -124,6 +127,7 @@ def Coalescer_constructor(options, level, full_system):
             options.L%(level)dProbesPerCycle, \
             tlb_level  = %(level)d ,\
             coalescingWindow = options.L%(level)dCoalescingWindow,\
+            pwc_fetch_entries = getattr(options, 'pwc_fetch_bytes', 64) // 8,\
             disableCoalescing = options.L%(level)dDisableCoalescing,\
             clk_domain = SrcClockDomain(\
                 clock = options.gpu_clock,\
@@ -276,6 +280,14 @@ def config_tlb_hierarchy(
                         system.%s_tlb[%d].cpu_side_ports[0]"
                     % (name, index, name, index)
                 )
+                # Give each Vega coalescer a handle to the TLB it feeds. The
+                # final-level coalescer uses that TLB's line predictor.
+                if full_system:
+                    exec(
+                        "system.%s_coalescer[%d].downstream_tlb = \
+                            system.%s_tlb[%d]"
+                        % (name, index, name, index)
+                    )
 
     # Connect the cpuSidePort of all the coalescers in level 1
     # < Modify here if you want a different configuration >
@@ -354,9 +366,8 @@ def config_tlb_hierarchy(
             )
             l2_coalescer_indices[xcd_id] += 1
 
-    # L2 is the terminal TLB level; each L2 walker performs page walks.
-
-    # Connect each terminal L2 TLB walker to memory for full system only.
+    # L2 is the terminal TLB level; its page-table walkers connect to memory
+    # in full-system mode.
     if full_system:
         for TLB_type in L2:
             name = TLB_type["name"]

@@ -1265,6 +1265,50 @@ class Inst_SOP2__S_LSHL_B32 : public Inst_SOP2
     void execute(GPUDynInstPtr) override;
 }; // Inst_SOP2__S_LSHL_B32
 
+class Inst_SOP2__S_LSHL_ADD_U32 : public Inst_SOP2
+{
+  public:
+    Inst_SOP2__S_LSHL_ADD_U32(
+        InFmt_SOP2 *, const std::string &opcode, int shift);
+    ~Inst_SOP2__S_LSHL_ADD_U32();
+
+    int
+    getNumOperands() override
+    {
+        return numDstRegOperands() + numSrcRegOperands();
+    } // getNumOperands
+
+    int
+    numDstRegOperands() override
+    {
+        return 1;
+    }
+    int
+    numSrcRegOperands() override
+    {
+        return 2;
+    }
+
+    int
+    getOperandSize(int opIdx) override
+    {
+        switch (opIdx) {
+          case 0: // ssrc_0
+          case 1: // ssrc_1
+          case 2: // sdst
+            return 4;
+          default:
+            fatal("op idx %i out of bounds\n", opIdx);
+            return -1;
+        }
+    } // getOperandSize
+
+    void execute(GPUDynInstPtr) override;
+
+  private:
+    const int shift;
+}; // Inst_SOP2__S_LSHL_ADD_U32
+
 class Inst_SOP2__S_LSHL_B64 : public Inst_SOP2
 {
   public:
@@ -7877,7 +7921,7 @@ class Inst_VOP2__V_CNDMASK_B32 : public Inst_VOP2
     int
     numSrcRegOperands() override
     {
-        return 3;
+        return sdwaPreservesDst() ? 4 : 3;
     }
 
     int
@@ -7890,7 +7934,8 @@ class Inst_VOP2__V_CNDMASK_B32 : public Inst_VOP2
                 return 4;
             case 2: // vcc
                 return 8;
-            case 3: // vdst
+            case 3: // vdst, or old vdst for SDWA preservation
+            case 4: // vdst for SDWA preservation
                 return 4;
             default:
                 fatal("op idx %i out of bounds\n", opIdx);
@@ -7898,6 +7943,7 @@ class Inst_VOP2__V_CNDMASK_B32 : public Inst_VOP2
         }
     } // getOperandSize
 
+    void initOperandInfo() override;
     void execute(GPUDynInstPtr) override;
 }; // Inst_VOP2__V_CNDMASK_B32
 
@@ -9539,7 +9585,7 @@ class Inst_VOP2__V_ADD_U16 : public Inst_VOP2
     int
     numSrcRegOperands() override
     {
-        return 2;
+        return sdwaPreservesDst() ? 3 : 2;
     }
 
     int
@@ -9547,17 +9593,18 @@ class Inst_VOP2__V_ADD_U16 : public Inst_VOP2
     {
         switch (opIdx) {
             case 0: // src_0
-                return 2;
             case 1: // src_1
-                return 2;
-            case 2: // vdst
-                return 2;
+                return isSDWAInst() ? 4 : 2;
+            case 2: // vdst, or old vdst for SDWA preservation
+            case 3: // vdst for SDWA preservation
+                return isSDWAInst() ? 4 : 2;
             default:
                 fatal("op idx %i out of bounds\n", opIdx);
                 return -1;
         }
     } // getOperandSize
 
+    void initOperandInfo() override;
     void execute(GPUDynInstPtr) override;
 }; // Inst_VOP2__V_ADD_U16
 
@@ -9665,7 +9712,7 @@ class Inst_VOP2__V_MUL_LO_U16 : public Inst_VOP2
     int
     numSrcRegOperands() override
     {
-        return 2;
+        return sdwaPreservesDst() ? 3 : 2;
     }
 
     int
@@ -9673,17 +9720,18 @@ class Inst_VOP2__V_MUL_LO_U16 : public Inst_VOP2
     {
         switch (opIdx) {
             case 0: // src_0
-                return 2;
             case 1: // src_1
-                return 2;
-            case 2: // vdst
-                return 2;
+                return isSDWAInst() ? 4 : 2;
+            case 2: // vdst, or old vdst for SDWA preservation
+            case 3: // vdst for SDWA preservation
+                return isSDWAInst() ? 4 : 2;
             default:
                 fatal("op idx %i out of bounds\n", opIdx);
                 return -1;
         }
     } // getOperandSize
 
+    void initOperandInfo() override;
     void execute(GPUDynInstPtr) override;
 }; // Inst_VOP2__V_MUL_LO_U16
 
