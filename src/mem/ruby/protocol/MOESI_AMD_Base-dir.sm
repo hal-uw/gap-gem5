@@ -1117,10 +1117,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   }
 
   action(wd_writeBackData, "wd", desc="Write back data if needed") {
-    // Write memory for data that must be persisted:
-    // WT/atomic updates, or dirty data returned by probes.
-    // Clean read data does not need writeback — memory already has it.
-    if (tbe.wtData || tbe.atomicData || tbe.Dirty) {
+    if (tbe.wtData || tbe.atomicData || tbe.Dirty == false) {
       // Only perform atomics in the directory if the SLC bit is set, or
       // if the L2 is WT
       if (tbe.atomicData && (tbe.isSLCSet || !L2isWB)) {
