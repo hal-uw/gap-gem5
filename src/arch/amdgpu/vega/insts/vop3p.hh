@@ -475,6 +475,16 @@ class Inst_VOP3P__V_MAD_MIXLO_F16 : public Inst_VOP3P__3OP_X16
     void execute(GPUDynInstPtr gpuDynInst) override;
 };
 
+class Inst_VOP3P__V_MAD_MIXHI_F16 : public Inst_VOP3P__3OP_X16
+{
+  public:
+    Inst_VOP3P__V_MAD_MIXHI_F16(InFmt_VOP3P *iFmt)
+        : Inst_VOP3P__3OP_X16(iFmt, "v_mad_mixhi_f16")
+    {}
+
+    void execute(GPUDynInstPtr gpuDynInst) override;
+};
+
 class Inst_VOP3P__V_MAD_MIX_F32 : public Inst_VOP3P__3OP_X16
 {
   public:

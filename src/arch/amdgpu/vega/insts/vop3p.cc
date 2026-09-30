@@ -126,6 +126,58 @@ clampF32(float value, bool clamp)
     return std::clamp(value, 0.0f, 1.0f);
 }
 
+// V_MAD_MIXLO_F16 / V_MAD_MIXHI_F16: fused multiply-add of three inputs,
+// each src[31:0] as a float or src[15:0] / src[31:16] as a half, selected
+// by { OPSEL_HI[i], OPSEL[i] }. NEG_HI[i] acts as an absolute-value
+// modifier. Returns a*b + c as a double rounded to odd, so that rounding
+// it to half with doubleToHalf() gives the correctly rounded result
+// (round-to-odd to 53 bits followed by round-to-nearest-even to 11 bits
+// is exact). Rounding to nearest double instead can be wrong: with float
+// inputs, c can be exactly halfway between two halves and a tiny a*b
+// then vanishes in the double sum.
+double
+madMixF16(uint32_t src0, uint32_t src1, uint32_t src2, int opsel,
+          int opsel_hi, int neg_hi)
+{
+    auto input = [&](uint32_t src, int i) {
+        double val;
+        if (opsel_hi & (1 << i)) {
+            val = halfToDouble((opsel & (1 << i)) ? bits(src, 31, 16)
+                                                  : bits(src, 15, 0));
+        } else {
+            float f;
+            std::memcpy(&f, &src, sizeof(f));
+            val = f;
+        }
+        return (neg_hi & (1 << i)) ? std::fabs(val) : val;
+    };
+
+    // A product of two floats (or halves) is exact in a double.
+    double prod = input(src0, 0) * input(src1, 1);
+    double addend = input(src2, 2);
+    double sum = prod + addend;
+
+    if (!std::isfinite(sum)) {
+        return sum;
+    }
+
+    // Exact rounding error of the sum (Knuth's TwoSum).
+    double addend_part = sum - prod;
+    double prod_part = sum - addend_part;
+    double err = (prod - prod_part) + (addend - addend_part);
+
+    // Round to odd: if the sum is inexact and its last bit is even, use
+    // the neighbouring double on the side of the exact result.
+    uint64_t sum_bits;
+    std::memcpy(&sum_bits, &sum, sizeof(sum));
+    if (err != 0.0 && !(sum_bits & 1)) {
+        constexpr double inf = std::numeric_limits<double>::infinity();
+        sum = std::nextafter(sum, err > 0.0 ? inf : -inf);
+    }
+
+    return sum;
+}
+
 // Begin instruction execute definitions
 void
 Inst_VOP3P__V_PK_MAD_I16::execute(GPUDynInstPtr gpuDynInst)
@@ -1059,83 +1111,44 @@ Inst_VOP3P__V_MAD_MIXLO_F16::execute(GPUDynInstPtr gpuDynInst)
     int opsel_hi = extData.OPSEL_HI | (instData.OPSEL_HI2 << 2);
     int neg_hi = instData.NEG_HI;
 
-    ArmISA::FPSCR fpscr;
+    for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+        if (wf->execMask(lane)) {
+            vdst[lane] = doubleToHalf(
+                madMixF16(src0[lane], src1[lane], src2[lane], opsel,
+                          opsel_hi, neg_hi));
+        }
+    }
+
+    vdst.write();
+}
+
+void
+Inst_VOP3P__V_MAD_MIXHI_F16::execute(GPUDynInstPtr gpuDynInst)
+{
+    // Same as V_MAD_MIXLO_F16, but the half-precision result is stored
+    // into the high bits of the vector register. The low bits keep their
+    // previous value (mixlo followed by mixhi packs two results).
+    Wavefront *wf = gpuDynInst->wavefront();
+    ConstVecOperandU32 src0(gpuDynInst, extData.SRC0);
+    ConstVecOperandU32 src1(gpuDynInst, extData.SRC1);
+    ConstVecOperandU32 src2(gpuDynInst, extData.SRC2);
+    VecOperandU32 vdst(gpuDynInst, instData.VDST);
+
+    src0.readSrc();
+    src1.readSrc();
+    src2.readSrc();
+    vdst.read();
+
+    int opsel = instData.OPSEL;
+    int opsel_hi = extData.OPSEL_HI | (instData.OPSEL_HI2 << 2);
+    int neg_hi = instData.NEG_HI;
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (wf->execMask(lane)) {
-            float s0, s1, s2;
-
-            // Fill in s0.
-            if (opsel_hi & 0x1) {
-                uint16_t tmp0;
-
-                if (opsel & 0x1) {
-                    tmp0 = bits(src0[lane], 31, 16);
-                } else {
-                    tmp0 = bits(src0[lane], 15, 0);
-                }
-
-                uint32_t conv = ArmISA::fplibConvert<uint16_t, uint32_t>(
-                    tmp0, ArmISA::FPRounding_TIEEVEN, fpscr);
-                s0 = *reinterpret_cast<float *>(&conv);
-            } else {
-                uint32_t tmp0 = src0[lane];
-                s0 = *reinterpret_cast<float *>(&tmp0);
-            }
-
-            if (neg_hi & 0x1) {
-                s0 = std::fabs(s0);
-            }
-
-            // Fill in s1.
-            if (opsel_hi & 0x2) {
-                uint16_t tmp1;
-
-                if (opsel & 0x2) {
-                    tmp1 = bits(src1[lane], 31, 16);
-                } else {
-                    tmp1 = bits(src1[lane], 15, 0);
-                }
-
-                uint32_t conv = ArmISA::fplibConvert<uint16_t, uint32_t>(
-                    tmp1, ArmISA::FPRounding_TIEEVEN, fpscr);
-                s1 = *reinterpret_cast<float *>(&conv);
-            } else {
-                uint32_t tmp1 = src1[lane];
-                s1 = *reinterpret_cast<float *>(&tmp1);
-            }
-
-            if (neg_hi & 0x2) {
-                s1 = std::fabs(s1);
-            }
-
-            // Fill in s2.
-            if (opsel_hi & 0x4) {
-                uint16_t tmp2;
-
-                if (opsel & 0x4) {
-                    tmp2 = bits(src2[lane], 31, 16);
-                } else {
-                    tmp2 = bits(src2[lane], 15, 0);
-                }
-
-                uint32_t conv = ArmISA::fplibConvert<uint16_t, uint32_t>(
-                    tmp2, ArmISA::FPRounding_TIEEVEN, fpscr);
-                s2 = *reinterpret_cast<float *>(&conv);
-            } else {
-                uint32_t tmp2 = src2[lane];
-                s2 = *reinterpret_cast<float *>(&tmp2);
-            }
-
-            if (neg_hi & 0x4) {
-                s2 = std::fabs(s2);
-            }
-
-            float result = std::fma(s0, s1, s2);
-            uint32_t tmpv = *reinterpret_cast<uint32_t *>(&result);
-
-            vdst[lane] = ArmISA::fplibConvert<uint32_t, uint16_t>(
-                tmpv, ArmISA::FPRounding_TIEEVEN, fpscr);
+            uint16_t hi = doubleToHalf(
+                madMixF16(src0[lane], src1[lane], src2[lane], opsel,
+                          opsel_hi, neg_hi));
+            vdst[lane] = insertBits(vdst[lane], 31, 16, hi);
         }
     }
 
