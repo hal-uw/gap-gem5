@@ -57567,6 +57567,7 @@ class Inst_VOP3P_MAI__V_SMFMAC : public Inst_VOP3P_MAI
         : Inst_VOP3P_MAI(iFmt, *MNEMONIC)
     {
         setFlag(ALU);
+        setFlag(MFMA);
     }
 
     ~Inst_VOP3P_MAI__V_SMFMAC() {}
