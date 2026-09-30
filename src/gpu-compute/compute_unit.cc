@@ -192,6 +192,21 @@ ComputeUnit::ComputeUnit(const Params &p)
                 {"v_mfma_f32_32x32x16_bf8_fp8", 32},
                 {"v_mfma_f32_32x32x16_fp8_bf8", 32},
                 {"v_mfma_f32_32x32x16_fp8_fp8", 32},
+                // SMFMAC cycles from section 7.4 of the same reference.
+                {"v_smfmac_f32_16x16x32_f16", 16},
+                {"v_smfmac_f32_32x32x16_f16", 32},
+                {"v_smfmac_f32_16x16x32_bf16", 16},
+                {"v_smfmac_f32_32x32x16_bf16", 32},
+                {"v_smfmac_i32_16x16x64_i8", 16},
+                {"v_smfmac_i32_32x32x32_i8", 32},
+                {"v_smfmac_f32_16x16x64_bf8_bf8", 16},
+                {"v_smfmac_f32_16x16x64_bf8_fp8", 16},
+                {"v_smfmac_f32_16x16x64_fp8_bf8", 16},
+                {"v_smfmac_f32_16x16x64_fp8_fp8", 16},
+                {"v_smfmac_f32_32x32x32_bf8_bf8", 32},
+                {"v_smfmac_f32_32x32x32_bf8_fp8", 32},
+                {"v_smfmac_f32_32x32x32_fp8_bf8", 32},
+                {"v_smfmac_f32_32x32x32_fp8_fp8", 32},
             }},
            // gfx950 is CDNA4. The latency values are taken from table 28 in
            // section 7.1.2 in the CDNA4 Instruction Set Architecture
