@@ -32,7 +32,11 @@
 #ifndef __ARCH_VEGA_INSTS_INST_UTIL_HH__
 #define __ARCH_VEGA_INSTS_INST_UTIL_HH__
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <initializer_list>
+#include <limits>
 
 #include "arch/amdgpu/vega/gpu_registers.hh"
 #include "arch/amdgpu/vega/insts/gpu_static_inst.hh"
@@ -85,6 +89,124 @@ static const int NUM_BANKS = 4; /* 64 registers, 16/bank */
 
 namespace VegaISA
 {
+// fp16 (IEEE binary16) helpers. Every fp16 value and every product of two
+// fp16 values is exact in a double. The sum of fp16 values, or a*b + c,
+// is exact in a double too unless the terms are more than 2^53 apart; the
+// smaller term is then far below half an fp16 ulp of the larger one, so it
+// cannot change the fp16 rounding. fp16 arithmetic done in double and
+// rounded once with doubleToHalf() is therefore correctly rounded.
+
+inline bool
+isNaNF16(uint16_t h)
+{
+    return (h & 0x7c00) == 0x7c00 && (h & 0x3ff);
+}
+
+inline double
+halfToDouble(uint16_t h)
+{
+    int exp = bits(h, 14, 10);
+    int man = bits(h, 9, 0);
+    double val;
+
+    if (exp == 0x1f) {
+        val = man ? std::numeric_limits<double>::quiet_NaN()
+                  : std::numeric_limits<double>::infinity();
+    } else if (exp == 0) {
+        val = std::ldexp(man, -24);
+    } else {
+        val = std::ldexp(man | 0x400, exp - 25);
+    }
+
+    return bits(h, 15) ? -val : val;
+}
+
+// Round to the nearest fp16 value, ties to even. Denormals are kept and
+// values that round past the largest fp16 value become infinity. NaN
+// becomes the default quiet NaN.
+inline uint16_t
+doubleToHalf(double d)
+{
+    uint16_t sign = std::signbit(d) ? 0x8000 : 0;
+
+    if (std::isnan(d)) {
+        return 0x7e00;
+    }
+
+    d = std::fabs(d);
+    if (d == 0.0) {
+        return sign;
+    }
+    // 65520 is halfway between 65504 (max fp16) and 65536.
+    if (d >= 65520.0) {
+        return sign | 0x7c00;
+    }
+
+    // d = f * 2^exp, f in [0.5, 1). Round to a multiple of 2^quantum:
+    // 11 significant bits, or the denormal step 2^-24.
+    int exp;
+    std::frexp(d, &exp);
+    int quantum = std::max(exp - 11, -24);
+    uint32_t man = std::nearbyint(std::ldexp(d, -quantum));
+
+    if (quantum == -24) {
+        // Denormal; rounding up to 0x400 gives the smallest normal.
+        return sign | man;
+    }
+    if (man == 0x800) {
+        // Rounded up into the next binade.
+        man = 0x400;
+        quantum++;
+    }
+
+    return sign | ((quantum + 25) << 10) | (man & 0x3ff);
+}
+
+// Result of an fp16 operation computed in double: a NaN result is the
+// first NaN source, quieted, or the default quiet NaN if no source is a
+// NaN (e.g. inf - inf or 0 * inf).
+inline uint16_t
+f16Result(double result, std::initializer_list<uint16_t> srcs)
+{
+    if (std::isnan(result)) {
+        for (uint16_t src : srcs) {
+            if (isNaNF16(src)) {
+                return src | 0x200;
+            }
+        }
+    }
+
+    return doubleToHalf(result);
+}
+
+// The fp16 source value of a 32-bit operand read: the high or low half
+// (op_sel), or the fp16 value of an inline float constant, with the
+// abs and neg modifiers applied.
+inline uint16_t
+f16SrcOperand(uint32_t raw, int op_idx, bool hi, bool abs, bool neg)
+{
+    uint16_t val;
+
+    if (op_idx >= REG_POS_HALF && op_idx <= REG_2PI_RECIP) {
+        // Inline float constants are expanded as fp32; 16-bit
+        // instructions use the fp16 value of the constant.
+        float f;
+        std::memcpy(&f, &raw, sizeof(f));
+        val = doubleToHalf(f);
+    } else {
+        val = hi ? bits(raw, 31, 16) : bits(raw, 15, 0);
+    }
+
+    if (abs) {
+        val &= 0x7fff;
+    }
+    if (neg) {
+        val ^= 0x8000;
+    }
+
+    return val;
+}
+
 template <typename T>
 inline T
 wholeQuadMode(T val)
