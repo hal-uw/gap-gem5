@@ -49,7 +49,6 @@ VegaTLBCoalescer::VegaTLBCoalescer(const VegaTLBCoalescerParams &p)
       TLBProbesPerCycle(p.probesPerCycle),
       coalescingWindow(p.coalescingWindow),
       disableCoalescing(p.disableCoalescing),
-      pwcFetchEntries(p.pwc_fetch_entries),
       probeTLBEvent([this] { processProbeTLBEvent(); }, "Probe the TLB below",
                     false, Event::CPU_Tick_Pri),
       cleanupEvent([this] { processCleanupEvent(); },
@@ -58,6 +57,7 @@ VegaTLBCoalescer::VegaTLBCoalescer(const VegaTLBCoalescerParams &p)
       // Start the size predictor saturated toward 2 MiB (MSB clear), matching
       // the previous hardcoded default_pgSize speculation.
       sizePredictor(SizePredBits, 0),
+      pwcFetchEntries(p.pwc_fetch_entries),
       downstreamTLB(p.downstream_tlb),
       tlb_level(p.tlb_level),
       maxDownstream(p.maxDownstream),
