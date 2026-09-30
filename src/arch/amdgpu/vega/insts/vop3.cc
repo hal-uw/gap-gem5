@@ -7676,10 +7676,55 @@ Inst_VOP3__V_FMA_F16::~Inst_VOP3__V_FMA_F16()
 // --- description from .arch file ---
 // D.f16 = S0.f16 * S1.f16 + S2.f16.
 // Fused half precision multiply add.
+// 0.5ULP accuracy, denormals are supported. OPSEL[2:0] select the high
+// half of each source. If OPSEL[3] is 0 the result is written to the 16
+// LSBs of the destination VGPR and the high 16 bits are preserved; if it
+// is 1 the result is written to the 16 MSBs and the low 16 bits are
+// preserved.
 void
 Inst_VOP3__V_FMA_F16::execute(GPUDynInstPtr gpuDynInst)
 {
-    panicUnimplemented();
+    Wavefront *wf = gpuDynInst->wavefront();
+    ConstVecOperandU32 src0(gpuDynInst, extData.SRC0);
+    ConstVecOperandU32 src1(gpuDynInst, extData.SRC1);
+    ConstVecOperandU32 src2(gpuDynInst, extData.SRC2);
+    VecOperandU32 vdst(gpuDynInst, instData.VDST);
+
+    src0.readSrc();
+    src1.readSrc();
+    src2.readSrc();
+    vdst.read();
+
+    int opsel = instData.OPSEL;
+    int abs = instData.ABS;
+    int neg = extData.NEG;
+
+    for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+        if (wf->execMask(lane)) {
+            uint16_t s0 = f16SrcOperand(src0[lane], extData.SRC0,
+                                        opsel & 0x1, abs & 0x1, neg & 0x1);
+            uint16_t s1 = f16SrcOperand(src1[lane], extData.SRC1,
+                                        opsel & 0x2, abs & 0x2, neg & 0x2);
+            uint16_t s2 = f16SrcOperand(src2[lane], extData.SRC2,
+                                        opsel & 0x4, abs & 0x4, neg & 0x4);
+
+            double fma = halfToDouble(s0) * halfToDouble(s1) +
+                         halfToDouble(s2);
+            if (instData.CLAMP) {
+                // Clamp to [0.0, 1.0]; fmax() maps NaN to 0.0.
+                fma = std::fmin(std::fmax(fma, 0.0), 1.0);
+            }
+            uint16_t result = f16Result(fma, {s0, s1, s2});
+
+            if (opsel & 0x8) {
+                vdst[lane] = insertBits(vdst[lane], 31, 16, result);
+            } else {
+                vdst[lane] = insertBits(vdst[lane], 15, 0, result);
+            }
+        }
+    }
+
+    vdst.write();
 } // execute
 // --- Inst_VOP3__V_DIV_FIXUP_F16 class methods ---
 
