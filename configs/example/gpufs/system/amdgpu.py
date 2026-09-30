@@ -72,6 +72,7 @@ def createGPU(system, args):
                 spbypass_pipe_length=args.sp_bypass_path_length,
                 dpbypass_pipe_length=args.dp_bypass_path_length,
                 issue_period=args.issue_period,
+                valu_dual_issue=args.valu_dual_issue,
                 scalar_issue_period=args.scalar_issue_period,
                 sqc_bus_latency=args.sqc_bus_latency,
                 coalescer_to_vrf_bus_width=args.glbmem_rd_bus_width,

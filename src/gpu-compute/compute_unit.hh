@@ -322,6 +322,10 @@ class ComputeUnit : public ClockedObject
     int operandNetworkLength;
     // number of cycles per instruction issue period
     Cycles issuePeriod;
+    // CDNA 3 dual issue: up to two VALU instructions per SIMD per issue
+    // period, from different wavefronts, excluding FP64, MFMA and packed
+    // math.
+    bool valuDualIssue;
     // number of cycles per issue period for scalar ops
     Cycles scalarIssuePeriod;
 

@@ -164,6 +164,13 @@ class ComputeUnit(ClockedObject):
 
     scalar_pipe_length = Param.Int(1, "number of pipe stages per scalar ALU")
     issue_period = Param.Int(4, "number of cycles per issue period")
+    valu_dual_issue = Param.Bool(
+        False,
+        "Let a SIMD issue a second non-FP64 VALU instruction from a "
+        "different wavefront within one issue period (CDNA 3 dual issue). "
+        "A wavefront still issues at most one VALU instruction per issue "
+        "period.",
+    )
     scalar_issue_period = Param.Int(
         1, "number of cycles per issue period for scalar ops"
     )

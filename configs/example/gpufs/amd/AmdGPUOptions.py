@@ -114,6 +114,13 @@ def addAmdGPUOptions(parser):
         help="Number of cycles per vector instruction issue period",
     )
     parser.add_argument(
+        "--valu-dual-issue",
+        action="store_true",
+        default=False,
+        help="Allow two non-FP64 VALU instructions per SIMD per issue "
+        "period from different wavefronts (CDNA 3 dual issue)",
+    )
+    parser.add_argument(
         "--scalar-issue-period",
         type=int,
         default=1,
