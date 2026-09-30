@@ -1210,10 +1210,26 @@ Wavefront::exec()
         ii->isEndOfKernel() || ii->isReturn()) {
         // this is to enforce a fixed number of cycles per issue slot per SIMD
         if (!ii->isScalar()) {
-            if (ii->isALU()) {
-                if (ii->isFMA() && ii->isF64()) {
+            if (ii->isALU() && computeUnit->valuDualIssue) {
+                // CDNA 3 dual issue (CDNA 3 white paper Table 1: vector
+                // FP32 256 vs FP64 128 FLOP/clk/CU): the SIMD accepts a
+                // second VALU instruction, from another wavefront, within
+                // the same issue period. FP64, MFMA and packed math keep
+                // the full issue period (packed FP32 already reaches the
+                // 256 FLOP/clk/CU peak at one per period). This wavefront
+                // itself may not issue another VALU instruction for a full
+                // period.
+                Tick period =
+                    computeUnit->cyclesToTicks(computeUnit->issuePeriod);
+                bool dual =
+                    !ii->isF64() && !ii->isMFMA() && !ii->isPackedMath();
+                computeUnit->vectorALUs[simdId].set(dual ? period / 2
+                                                         : period);
+                nextValuIssueTick = computeUnit->clockEdge() + period;
+            } else if (ii->isALU()) {
+                if (ii->isF32()) {
                     computeUnit->vectorALUs[simdId].set(
-                    computeUnit->cyclesToTicks(computeUnit->issuePeriod) << 1);
+                    computeUnit->cyclesToTicks(computeUnit->issuePeriod) >> 1);
                 } else {
                     computeUnit->vectorALUs[simdId].set(
                     computeUnit->cyclesToTicks(computeUnit->issuePeriod));

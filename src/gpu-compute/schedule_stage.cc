@@ -467,6 +467,13 @@ ScheduleStage::dispatchReady(const GPUDynInstPtr &gpu_dyn_inst)
         } else if (!gpu_dyn_inst->isScalar() && !vectorAluRdy) {
             stats.dispNrdyStalls[SCH_VECTOR_ALU_NRDY]++;
             return false;
+        } else if (!gpu_dyn_inst->isScalar() && gpu_dyn_inst->isALU() &&
+                   computeUnit.valuDualIssue &&
+                   wf->nextValuIssueTick > computeUnit.clockEdge(Cycles(1))) {
+            // Dual issue pairs VALU instructions from different
+            // wavefronts; one wavefront issues at most one per period.
+            stats.dispNrdyStalls[SCH_VECTOR_ALU_NRDY]++;
+            return false;
         }
     } else if (!gpu_dyn_inst->isScalar() && gpu_dyn_inst->isGlobalMem()) {
         // Vector Global Memory instruction

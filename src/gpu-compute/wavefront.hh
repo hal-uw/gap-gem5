@@ -241,6 +241,10 @@ class Wavefront : public SimObject
     // dyn inst id (per SIMD) of last instruction exec from this wave
     uint64_t lastInstExec;
 
+    // With VALU dual issue, the earliest tick this wavefront may issue its
+    // next VALU instruction (one per issue period per wavefront).
+    Tick nextValuIssueTick = 0;
+
     // Map to track the dyn instruction id of each vector register value
     // produced, indexed by physical vector register ID
     std::unordered_map<int, uint64_t> rawDist;
