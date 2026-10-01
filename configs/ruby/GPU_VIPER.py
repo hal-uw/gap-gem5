@@ -466,6 +466,7 @@ class DirCntrl(GPU_VIPER_Directory_Controller, CntrlBase):
 
 
 def define_options(parser):
+    parser.add_argument("--pwc-fetch-bytes", type=int, default=64)
     parser.add_argument("--num-subcaches", type=int, default=4)
     parser.add_argument("--tcp-issue-latency", type=int, default=1)
     parser.add_argument("--l3-data-latency", type=int, default=20)
@@ -607,6 +608,8 @@ def define_options(parser):
     )
     parser.add_argument("--fabric-clock", type=str, default="1080MHz")
     parser.add_argument("--memory-clock", type=str, default="1000MHz")
+
+    parser.add_argument("--simplemem-bw", type=str, default="64GiB/s")
 
 
 def construct_dirs(options, system, ruby_system, network):
@@ -772,8 +775,13 @@ def construct_gpudirs(options, system, ruby_system, network):
                 options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
+            dram_intf = m5.objects.SimpleMemory(
+                range=dram_intf.range,
+                bandwidth=options.simplemem_bw,
+                latency="70ns",
+            )
 
-        if issubclass(mem_type, DRAMInterface):
+        if issubclass(type(dram_intf), DRAMInterface):
             if options.hbm_ctrl:
                 mem_ctrl = m5.objects.HBMCtrl(
                     dram=dram_intf,
@@ -786,7 +794,8 @@ def construct_gpudirs(options, system, ruby_system, network):
             mem_ctrl = dram_intf
 
         mem_ctrl.port = dir_cntrl.memory_out_port
-        mem_ctrl.dram.enable_dram_powerdown = False
+        if hasattr(mem_ctrl, "dram"):
+            mem_ctrl.dram.enable_dram_powerdown = False
 
         if options.hbm_ctrl:
             dir_cntrl.addr_ranges = [dram_intf.range, dram_intf_2.range]
