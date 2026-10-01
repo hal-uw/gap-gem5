@@ -38,6 +38,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   bool CPUonly := "False";
   bool GPUonly := "False";
   int TCC_select_num_bits;
+  int num_xcds := 1;
   bool useL3OnWT := "False";
   bool L2isWB;
   Cycles to_memory_controller_latency := 1;
@@ -714,9 +715,9 @@ machine(MachineType:Directory, "AMD Baseline protocol")
 
         // CPU + GPU or GPU only system
         if (noTCCdir) {
-          probe_dests.add(mapAddressToRange(address, MachineType:TCC,
-                                            TCC_select_low_bit,
-                                            TCC_select_num_bits));
+          probe_dests.addNetDest(mapAddressToRangeAcrossClusters(
+              address, MachineType:TCC, TCC_select_low_bit,
+              TCC_select_num_bits, num_xcds));
         } else {
           probe_dests.add(mapAddressToRange(address, MachineType:TCCdir,
                                             TCC_select_low_bit,
@@ -775,9 +776,9 @@ machine(MachineType:Directory, "AMD Baseline protocol")
              in_msg.Type != CoherenceRequestType:AtomicNoReturn) ||
              !in_msg.NoWriteConflict) {
           if (noTCCdir) {
-            probe_dests.add(mapAddressToRange(address, MachineType:TCC,
-                                              TCC_select_low_bit,
-                                              TCC_select_num_bits));
+            probe_dests.addNetDest(mapAddressToRangeAcrossClusters(
+                address, MachineType:TCC, TCC_select_low_bit,
+                TCC_select_num_bits, num_xcds));
           } else {
             probe_dests.add(mapAddressToRange(address, MachineType:TCCdir,
                                               TCC_select_low_bit,
@@ -840,9 +841,9 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         }
 
         if (GPUonly && L2isWB) {
-          probe_dests.add(mapAddressToRange(address, MachineType:TCC,
-                                            TCC_select_low_bit,
-                                            TCC_select_num_bits));
+          probe_dests.addNetDest(mapAddressToRangeAcrossClusters(
+              address, MachineType:TCC, TCC_select_low_bit,
+              TCC_select_num_bits, num_xcds));
         }
       }
       probe_dests.remove(in_msg.Requestor);
@@ -945,9 +946,9 @@ machine(MachineType:Directory, "AMD Baseline protocol")
 
         // CPU + GPU or GPU only system
         if (noTCCdir) {
-          probe_dests.add(mapAddressToRange(address, MachineType:TCC,
-                                            TCC_select_low_bit,
-                                            TCC_select_num_bits));
+          probe_dests.addNetDest(mapAddressToRangeAcrossClusters(
+              address, MachineType:TCC, TCC_select_low_bit,
+              TCC_select_num_bits, num_xcds));
         } else {
           probe_dests.add(mapAddressToRange(address, MachineType:TCCdir,
                                             TCC_select_low_bit,

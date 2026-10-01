@@ -51,6 +51,33 @@ from topologies.Cluster import Cluster
 from topologies.Crossbar import Crossbar
 
 
+def _get_xcd_layout(options):
+    """Validate and return (CUs and TCCs per XCD)."""
+    num_xcds = getattr(options, "num_xcds", 1)
+    if num_xcds < 1:
+        raise ValueError("num_xcds must be positive")
+
+    if options.num_compute_units % num_xcds:
+        raise ValueError("num_compute_units must divide evenly across num_xcds")
+    cu_per_xcd = options.num_compute_units // num_xcds
+
+    if options.num_tccs % num_xcds:
+        raise ValueError("num_tccs must divide evenly across num_xcds")
+    tccs_per_xcd = options.num_tccs // num_xcds
+    if tccs_per_xcd < 1 or tccs_per_xcd & (tccs_per_xcd - 1):
+        raise ValueError("the number of TCCs per XCD must be a power of two")
+
+    return cu_per_xcd, tccs_per_xcd
+
+
+def _controllers_per_xcd(cu_per_xcd, cus_per_controller, option_name):
+    if cu_per_xcd % cus_per_controller:
+        raise ValueError(
+            f"num_compute_units / num_xcds must be divisible by {option_name}"
+        )
+    return cu_per_xcd // cus_per_controller
+
+
 class CntrlBase:
     _seqs = 0
 
@@ -344,8 +371,12 @@ class TCC(RubyCache):
         self.size.value = self.size.value / options.num_tccs
         if (self.size.value / int(self.assoc)) < 128:
             self.size.value = int(128 * self.assoc)
+        # Each XCD owns a complete, private banked L2. Address bits select a
+        # bank only within that XCD, so set indexing must skip the local bank
+        # bits, not the bits for every TCC in the package.
+        _, tccs_per_xcd = _get_xcd_layout(options)
         self.start_index_bit = math.log(options.cacheline_size, 2) + math.log(
-            options.num_tccs, 2
+            tccs_per_xcd, 2
         )
         if hasattr(options, "tcc_rp"):
             self.replacement_policy = ObjectList.rp_list.get(options.tcc_rp)()
@@ -490,6 +521,12 @@ def define_options(parser):
         help="number of TCC banks in the GPU",
     )
     parser.add_argument(
+        "--num-xcds",
+        type=int,
+        default=1,
+        help="number of XCDs; CUs and TCCs split evenly by default",
+    )
+    parser.add_argument(
         "--sqc-size", type=str, default="32KiB", help="SQC cache size"
     )
     parser.add_argument(
@@ -617,7 +654,8 @@ def construct_dirs(options, system, ruby_system, network):
     dir_cntrl_nodes = []
 
     # For an odd number of CPUs, still create the right number of controllers
-    TCC_bits = int(math.log(options.num_tccs, 2))
+    cu_per_xcd, tccs_per_xcd = _get_xcd_layout(options)
+    TCC_bits = int(math.log(tccs_per_xcd, 2))
 
     if options.numa_high_bit:
         numa_bit = options.numa_high_bit
@@ -641,7 +679,11 @@ def construct_dirs(options, system, ruby_system, network):
             )
             dir_ranges.append(addr_range)
 
-        dir_cntrl = DirCntrl(noTCCdir=True, TCC_select_num_bits=TCC_bits)
+        dir_cntrl = DirCntrl(
+            noTCCdir=True,
+            TCC_select_num_bits=TCC_bits,
+            num_xcds=getattr(options, "num_xcds", 1),
+        )
         dir_cntrl.create(options, dir_ranges, ruby_system, system)
         dir_cntrl.number_of_TBEs = options.num_tbes
         dir_cntrl.useL3OnWT = options.use_L3_on_WT
@@ -688,7 +730,8 @@ def construct_gpudirs(options, system, ruby_system, network):
     xor_low_bit = 0
 
     # For an odd number of CPUs, still create the right number of controllers
-    TCC_bits = int(math.log(options.num_tccs, 2))
+    cu_per_xcd, tccs_per_xcd = _get_xcd_layout(options)
+    TCC_bits = int(math.log(tccs_per_xcd, 2))
 
     dir_bits = int(math.log(options.dgpu_num_dirs, 2))
     block_size_bits = int(math.log(options.cacheline_size, 2))
@@ -709,6 +752,7 @@ def construct_gpudirs(options, system, ruby_system, network):
             noTCCdir=True,
             TCC_select_num_bits=TCC_bits,
             clk_domain=system.fabric_clk,
+            num_xcds=getattr(options, "num_xcds", 1),
         )
         dir_cntrl.create(options, [addr_range], ruby_system, system)
         dir_cntrl.number_of_TBEs = options.num_tbes
@@ -859,11 +903,16 @@ def construct_tcps(options, system, ruby_system, network):
     tcp_cntrl_nodes = []
 
     # For an odd number of CPUs, still create the right number of controllers
-    TCC_bits = int(math.log(options.num_tccs, 2))
+    cu_per_xcd, tccs_per_xcd = _get_xcd_layout(options)
+    TCC_bits = int(math.log(tccs_per_xcd, 2))
 
     for i in range(options.num_compute_units):
+        xcd_id = i // cu_per_xcd
         tcp_cntrl = TCPCntrl(
-            TCC_select_num_bits=TCC_bits, issue_latency=1, number_of_TBEs=2560
+            TCC_select_num_bits=TCC_bits,
+            TCC_select_xcd_id=xcd_id,
+            issue_latency=1,
+            number_of_TBEs=2560,
         )
         # TBEs set to max outstanding requests
         tcp_cntrl.create(options, ruby_system, system)
@@ -905,10 +954,17 @@ def construct_sqcs(options, system, ruby_system, network):
     sqc_cntrl_nodes = []
 
     # For an odd number of CPUs, still create the right number of controllers
-    TCC_bits = int(math.log(options.num_tccs, 2))
+    cu_per_xcd, tccs_per_xcd = _get_xcd_layout(options)
+    TCC_bits = int(math.log(tccs_per_xcd, 2))
+    sqcs_per_xcd = _controllers_per_xcd(
+        cu_per_xcd, options.cu_per_sqc, "cu_per_sqc"
+    )
 
     for i in range(options.num_sqc):
-        sqc_cntrl = SQCCntrl(TCC_select_num_bits=TCC_bits)
+        sqc_cntrl = SQCCntrl(
+            TCC_select_num_bits=TCC_bits,
+            TCC_select_xcd_id=i // sqcs_per_xcd,
+        )
         sqc_cntrl.create(options, ruby_system, system)
 
         exec("ruby_system.sqc_cntrl%d = sqc_cntrl" % i)
@@ -938,10 +994,17 @@ def construct_scalars(options, system, ruby_system, network):
     scalar_cntrl_nodes = []
 
     # For an odd number of CPUs, still create the right number of controllers
-    TCC_bits = int(math.log(options.num_tccs, 2))
+    cu_per_xcd, tccs_per_xcd = _get_xcd_layout(options)
+    TCC_bits = int(math.log(tccs_per_xcd, 2))
+    scalars_per_xcd = _controllers_per_xcd(
+        cu_per_xcd, options.cu_per_scalar_cache, "cu_per_scalar_cache"
+    )
 
     for i in range(options.num_scalar_cache):
-        scalar_cntrl = ScalarCntrl(TCC_select_num_bits=TCC_bits)
+        scalar_cntrl = ScalarCntrl(
+            TCC_select_num_bits=TCC_bits,
+            TCC_select_xcd_id=i // scalars_per_xcd,
+        )
         scalar_cntrl.create(options, ruby_system, system)
 
         exec("ruby_system.scalar_cntrl%d = scalar_cntrl" % i)
@@ -968,14 +1031,18 @@ def construct_cmdprocs(options, system, ruby_system, network):
     cmdproc_cntrl_nodes = []
 
     # For an odd number of CPUs, still create the right number of controllers
-    TCC_bits = int(math.log(options.num_tccs, 2))
+    _, tccs_per_xcd = _get_xcd_layout(options)
+    TCC_bits = int(math.log(tccs_per_xcd, 2))
 
     for i in range(options.num_cp):
         tcp_ID = options.num_compute_units + i
         sqc_ID = options.num_sqc + i
 
         tcp_cntrl = TCPCntrl(
-            TCC_select_num_bits=TCC_bits, issue_latency=1, number_of_TBEs=2560
+            TCC_select_num_bits=TCC_bits,
+            TCC_select_xcd_id=0,
+            issue_latency=1,
+            number_of_TBEs=2560,
         )
         # TBEs set to max outstanding requests
         tcp_cntrl.createCP(options, ruby_system, system)
@@ -1009,7 +1076,9 @@ def construct_cmdprocs(options, system, ruby_system, network):
 
         tcp_cntrl.mandatoryQueue = MessageBuffer()
 
-        sqc_cntrl = SQCCntrl(TCC_select_num_bits=TCC_bits)
+        sqc_cntrl = SQCCntrl(
+            TCC_select_num_bits=TCC_bits, TCC_select_xcd_id=0
+        )
         sqc_cntrl.create(options, ruby_system, system)
 
         exec("ruby_system.sqc_cntrl%d = sqc_cntrl" % sqc_ID)
@@ -1073,6 +1142,8 @@ def create_system(
 ):
     if buildEnv["PROTOCOL"] != "GPU_VIPER":
         panic("This script requires the GPU_VIPER protocol to be built.")
+
+    _get_xcd_layout(options)
 
     cpu_sequencers = []
 

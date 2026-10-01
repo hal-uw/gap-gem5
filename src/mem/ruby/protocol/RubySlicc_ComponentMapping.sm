@@ -34,6 +34,9 @@ MachineID mapAddressToRange(Addr addr, MachineType type,
                             int low, int high);
 MachineID mapAddressToRange(Addr addr, MachineType type,
                             int low, int high, NodeID n);
+NetDest mapAddressToRangeAcrossClusters(Addr addr, MachineType type,
+                                        int low_bit, int num_bits,
+                                        int num_clusters);
 NetDest broadcast(MachineType type);
 NodeID machineIDToNodeID(MachineID machID);
 NodeID machineIDToVersion(MachineID machID);

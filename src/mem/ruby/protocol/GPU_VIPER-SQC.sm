@@ -36,6 +36,7 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
  : Sequencer* sequencer;
    CacheMemory * L1cache;
    int TCC_select_num_bits;
+   int TCC_select_xcd_id := 0;
    Cycles issue_latency := 80;  // time to send data down to TCC
    Cycles l2_hit_latency := 18; // for 1MiB L2, 20 for 2MiB
 
@@ -285,8 +286,10 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
       out_msg.addr := address;
       out_msg.Type := CoherenceRequestType:RdBlk;
       out_msg.Requestor := machineID;
+      // Select a bank inside this SQC's private XCD-local TCC group.
       out_msg.Destination.add(mapAddressToRange(address,MachineType:TCC,
-                              TCC_select_low_bit, TCC_select_num_bits));
+                              TCC_select_low_bit, TCC_select_num_bits,
+                              intToID(TCC_select_xcd_id)));
       out_msg.MessageSize := MessageSizeType:Request_Control;
       out_msg.InitialRequestTime := curCycle();
     }
