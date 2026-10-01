@@ -274,6 +274,10 @@ GpuTLB::invalidateAll()
             freeList[i].push_back(entry);
         }
     }
+
+    // The walker's page-walk caches hold PDEs/PTEs that go stale on the same
+    // page-table update that triggered this invalidation, so flush them too.
+    walker->invalidatePWC();
 }
 
 void
@@ -671,7 +675,8 @@ GpuTLB::translationReturn(Addr virtPageAddr, tlbOutcome outcome, PacketPtr pkt)
             TLBEvent *tlb_event = translationReturnEvent[virtPageAddr];
             assert(tlb_event);
             tlb_event->updateOutcome(PAGE_WALK);
-            schedule(tlb_event, curTick());
+            schedule(tlb_event,
+                     curTick() + cyclesToTicks(Cycles(missLatency2)));
         }
     } else if (outcome == PAGE_WALK) {
         if (update_stats) {
