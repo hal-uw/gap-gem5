@@ -287,6 +287,7 @@ class ScalarCache(SQCCache):
         elif hasattr(options, "sqc_rp"):
             self.replacement_policy = ObjectList.rp_list.get(options.sqc_rp)()
 
+
 class ScalarCntrl(GPU_VIPER_SQC_Controller, CntrlBase):
     def create(self, options, ruby_system, system):
         # Scalar and SQC controllers share MachineType:SQC, so their
@@ -557,8 +558,8 @@ def define_options(parser):
         action="store_true",
         default=False,
         help="Disable the GPU coalescer deadlock watchdog (which otherwise "
-             "aborts on long-lived outstanding requests). Useful for "
-             "slow-memory sensitivity experiments.",
+        "aborts on long-lived outstanding requests). Useful for "
+        "slow-memory sensitivity experiments.",
     )
     parser.add_argument(
         "--max-coalesces-per-cycle",
@@ -766,6 +767,10 @@ def construct_gpudirs(options, system, ruby_system, network):
                 options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
+            dram_intf.read_buffer_size = 128
+            dram_intf.write_buffer_size = 128
+            dram_intf_2.read_buffer_size = 128
+            dram_intf_2.write_buffer_size = 128
         else:
             dram_intf = MemConfig.create_mem_intf(
                 mem_type,
