@@ -101,6 +101,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     CtoD,               desc="...";
     WriteThrough,       desc="WriteThrough Message";
     Atomic,             desc="Atomic Message";
+    InvCache,            desc="Invalidate directory cache";
 
     // writebacks
     VicDirty,           desc="...";
@@ -439,6 +440,8 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         } else if (in_msg.Type == CoherenceRequestType:WriteFlush) {
             DPRINTF(RubySlicc, "Got Flush from %s on %s\n", in_msg.Requestor, in_msg.addr);
             trigger(Event:Flush, in_msg.addr, entry, tbe);
+        } else if (in_msg.Type == CoherenceRequestType:InvCache) {
+            trigger(Event:InvCache, in_msg.addr, entry, tbe);
         } else {
           error("Bad request message type");
         }
@@ -596,6 +599,21 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         out_msg.instSeqNum := in_msg.instSeqNum;
         out_msg.isGLCSet := in_msg.isGLCSet;
         out_msg.isSLCSet := in_msg.isSLCSet;
+      }
+    }
+  }
+
+  action(i_invL3Bar, "ib", desc="invalidate directory cache for a BAR write") {
+    if (GPUonly && L3CacheMemory.isTagPresent(address)) {
+      L3CacheMemory.deallocate(address);
+    }
+    peek(requestNetwork_in, CPURequestMsg) {
+      enqueue(responseNetwork_out, ResponseMsg, response_latency) {
+        out_msg.addr := address;
+        out_msg.Type := CoherenceResponseType:InvCacheAck;
+        out_msg.Sender := machineID;
+        out_msg.Destination.add(in_msg.Requestor);
+        out_msg.MessageSize := MessageSizeType:Response_Control;
       }
     }
   }
@@ -1393,6 +1411,14 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   */
 
   // TRANSITIONS
+  transition({U, BL, BDR_M, BDW_M, BS_M, BM_M, B_M, BP,
+              BDR_PM, BDW_PM, BS_PM, BM_PM, B_PM, BDR_Pm,
+              BDW_Pm, BS_Pm, BM_Pm, B_Pm, B, BL2, BL2_Pm,
+              BL2_M, F}, InvCache) {
+    i_invL3Bar;
+    p_popRequestQueue;
+  }
+
   transition({BL, BL2, BL2_Pm, BL2_M, BDR_M, BDW_M, BS_M, BM_M, B_M, BP, BDR_PM, BDW_PM, BS_PM, BM_PM, B_PM, BDR_Pm, BDW_Pm, BS_Pm, BM_Pm, B_Pm, B}, {RdBlkS, RdBlkM, RdBlk, CtoD}) {
       st_stallAndWaitRequest;
   }

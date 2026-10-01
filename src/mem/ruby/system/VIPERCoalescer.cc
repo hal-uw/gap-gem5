@@ -319,20 +319,26 @@ VIPERCoalescer::invTCP()
 void
 VIPERCoalescer::invTCCCallback(Addr addr)
 {
-    for (auto& pkt : m_pending_invl2s[addr]) {
-        RubyPort::SenderState *ss =
-            safe_cast<RubyPort::SenderState *>(pkt->senderState);
-        MemResponsePort *port = ss->port;
-        assert(port != nullptr);
+    auto it = m_pending_invl2s.find(addr);
+    assert(it != m_pending_invl2s.end() && !it->second.empty());
 
-        // Now convert to MemSyncResp
-        pkt->makeResponse();
-
-        pkt->senderState = ss->predecessor;
-        delete ss;
-        port->hitCallback(pkt);
+    PacketPtr pkt = it->second.back();
+    it->second.pop_back();
+    if (it->second.empty()) {
+        m_pending_invl2s.erase(it);
     }
-    m_pending_invl2s.erase(addr);
+
+    RubyPort::SenderState *ss =
+        safe_cast<RubyPort::SenderState *>(pkt->senderState);
+    MemResponsePort *port = ss->port;
+    assert(port != nullptr);
+
+    // Now convert to MemSyncResp
+    pkt->makeResponse();
+
+    pkt->senderState = ss->predecessor;
+    delete ss;
+    port->hitCallback(pkt);
 }
 
 /*
