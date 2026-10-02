@@ -29,7 +29,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <cstring>
+
 #include "arch/amdgpu/vega/insts/instructions.hh"
+#include "sim/core.hh"
 
 namespace gem5
 {
@@ -929,7 +932,11 @@ Inst_SMEM__S_MEMTIME::completeAcc(GPUDynInstPtr gpuDynInst)
 
 Inst_SMEM__S_MEMREALTIME::Inst_SMEM__S_MEMREALTIME(InFmt_SMEM *iFmt)
     : Inst_SMEM(iFmt, "s_memrealtime")
-{} // Inst_SMEM__S_MEMREALTIME
+{
+    setFlag(NoAddr);
+    setFlag(MemoryRef);
+    setFlag(Load);
+} // Inst_SMEM__S_MEMREALTIME
 
 Inst_SMEM__S_MEMREALTIME::~Inst_SMEM__S_MEMREALTIME()
 {} // ~Inst_SMEM__S_MEMREALTIME
@@ -939,8 +946,36 @@ Inst_SMEM__S_MEMREALTIME::~Inst_SMEM__S_MEMREALTIME()
 void
 Inst_SMEM__S_MEMREALTIME::execute(GPUDynInstPtr gpuDynInst)
 {
-    panicUnimplemented();
+    Wavefront *wf = gpuDynInst->wavefront();
+    gpuDynInst->execUnitId = wf->execUnitId;
+    gpuDynInst->latency.init(gpuDynInst->computeUnit());
+    gpuDynInst->latency.set(gpuDynInst->computeUnit()->memtime_latency);
+    gpuDynInst->scalarAddr = 0;
+    gpuDynInst->computeUnit()->scalarMemoryPipe.issueRequest(gpuDynInst);
 } // execute
+
+void
+Inst_SMEM__S_MEMREALTIME::initiateAcc(GPUDynInstPtr gpuDynInst)
+{
+    initMemRead<2>(gpuDynInst);
+} // initiateAcc
+
+void
+Inst_SMEM__S_MEMREALTIME::completeAcc(GPUDynInstPtr gpuDynInst)
+{
+    // Like s_memtime, the memory system returns the CU's cycle count.
+    // Convert it to the real-time counter, which counts at a constant
+    // 100 MHz (one count per 10 ns) independent of the shader clock.
+    uint64_t cycles;
+    std::memcpy(&cycles, gpuDynInst->scalar_data, sizeof(cycles));
+    Tick tick = gpuDynInst->computeUnit()->cyclesToTicks(Cycles(cycles));
+    uint64_t real_time = tick / (10 * sim_clock::as_int::ns);
+    std::memcpy(gpuDynInst->scalar_data, &real_time, sizeof(real_time));
+
+    // use U64 because 2 requests, each size 32
+    ScalarOperandU64 sdst(gpuDynInst, instData.SDATA);
+    sdst.write();
+} // completeAcc
 // --- Inst_SMEM__S_ATC_PROBE class methods ---
 
 Inst_SMEM__S_ATC_PROBE::Inst_SMEM__S_ATC_PROBE(InFmt_SMEM *iFmt)
