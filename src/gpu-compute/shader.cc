@@ -243,6 +243,8 @@ Shader::prepareInvalidate(HSAQueueEntry *task)
             0, 0, 0, cuList[i_cu]->requestorId(), 0, -1);
 
         if ((i_cu % n_cu_per_sqc) == 0) {
+            _dispatcher.updateInvCounter(kernId, +1);
+            _dispatcher.updateInvCounter(kernId, +1);
             cuList[i_cu]->doSQCInvalidate(sqc_req, task->dispatchId());
         }
 

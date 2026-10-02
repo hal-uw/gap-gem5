@@ -193,7 +193,7 @@ ScalarMemPipeline::injectScalarMemFence(GPUDynInstPtr gpuDynInst,
         req->setFlags(Request::KERNEL);
         sqc_pkt = new Packet(req, MemCmd::MemSyncReq);
         sqc_pkt->pushSenderState(new ComputeUnit::SQCPort::SenderState(
-            gpuDynInst->wavefront(), nullptr));
+            gpuDynInst->wavefront(), nullptr, gpuDynInst->kern_id));
     } else {
         gpuDynInst->setRequestFlags(req);
 

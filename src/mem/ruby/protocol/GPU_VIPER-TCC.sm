@@ -73,6 +73,7 @@ machine(MachineType:TCC, "TCC Cache")
     // Probes
     PrbInv,                 desc="Invalidating probe";
     InvCache,               desc="Invalidating probe from TCP";
+    InvCacheAck,            desc="Directory cache invalidation completed";
     PrbDowngrade,	        desc="Downgrading probe";
     // Coming from Memory Controller
     WBAck,                  desc="writethrough ack from memory";
@@ -85,6 +86,7 @@ machine(MachineType:TCC, "TCC Cache")
     W, AccessPermission:Read_Write, desc="Written(dirty cache only)";
     V, AccessPermission:Read_Only,  desc="Valid";
     I, AccessPermission:Invalid,    desc="Invalid";
+    II, AccessPermission:Busy,      desc="Waiting for directory invalidation";
     IV, AccessPermission:Busy,      desc="Waiting for Data";
     WI, AccessPermission:Busy,      desc="Waiting on Writethrough Ack";
     WIB, AccessPermission:Busy,     desc="Waiting on Writethrough Ack; Will be Bypassed";
@@ -336,6 +338,8 @@ machine(MachineType:TCC, "TCC Cache")
               trigger(Event:L2_Repl, victim, getCacheEntry(victim), TBEs.lookup(victim));
             }
           }
+        } else if (in_msg.Type == CoherenceResponseType:InvCacheAck) {
+          trigger(Event:InvCacheAck, in_msg.addr, cache_entry, tbe);
         } else {
           error("Unexpected Response Message to Core");
         }
@@ -444,16 +448,25 @@ machine(MachineType:TCC, "TCC Cache")
     unset_cache_entry();
   }
 
+  action(id_invL3, "id", desc="invalidate directory cache block") {
+    enqueue(requestToNB_out, CPURequestMsg, l2_request_latency) {
+      out_msg.addr := address;
+      out_msg.Type := CoherenceRequestType:InvCache;
+      out_msg.Requestor := machineID;
+      out_msg.Destination.add(
+          mapAddressToMachine(address, MachineType:Directory));
+      out_msg.MessageSize := MessageSizeType:Request_Control;
+    }
+  }
+
   action(ir_invL2Resp, "ir", desc="send L2 invalidate ack") {
-    peek(coreRequestNetwork_in, CPURequestMsg) {
-      enqueue(responseToCore_out, ResponseMsg, l2_response_latency) {
-        out_msg.addr := address;
-        out_msg.Type := CoherenceResponseType:InvL2Resp;
-        out_msg.Sender := machineID;
-        out_msg.Destination.add(in_msg.Requestor);
-        out_msg.MessageSize := MessageSizeType:Response_Control;
-        DPRINTF(RubySlicc, "%s\n", out_msg);
-      }
+    enqueue(responseToCore_out, ResponseMsg, l2_response_latency) {
+      out_msg.addr := address;
+      out_msg.Type := CoherenceResponseType:InvL2Resp;
+      out_msg.Sender := machineID;
+      out_msg.Destination := tbe.Destination;
+      out_msg.MessageSize := MessageSizeType:Response_Control;
+      DPRINTF(RubySlicc, "%s\n", out_msg);
     }
   }
 
@@ -696,6 +709,9 @@ machine(MachineType:TCC, "TCC Cache")
            in_msg.Type == CoherenceRequestType:AtomicNoReturn){
           tbe.Destination.add(in_msg.Requestor);
         }
+        if (in_msg.Type == CoherenceRequestType:InvCache) {
+          tbe.Destination.add(in_msg.Requestor);
+        }
         /*
           If there are multiple concurrent requests to the same cache line, each
           one will overwrite the previous ones GLC/SLC information here.
@@ -884,6 +900,18 @@ machine(MachineType:TCC, "TCC Cache")
 
   action(st_stallAndWaitRequest, "st", desc="Stall and wait on the address") {
     stall_and_wait(coreRequestNetwork_in, address);
+  }
+
+  action(ia_mergeInvRequest, "ia",
+         desc="Merge an invalidate request for a new TCP") {
+    peek(coreRequestNetwork_in, CPURequestMsg) {
+      if (tbe.Destination.isElement(in_msg.Requestor)) {
+        stall_and_wait(coreRequestNetwork_in, address);
+      } else {
+        tbe.Destination.add(in_msg.Requestor);
+        coreRequestNetwork_in.dequeue(clockEdge());
+      }
+    }
   }
 
   action(wada_wakeUpAllDependentsAddr, "wada", desc="Wake up any requests waiting for this address") {
@@ -1248,10 +1276,22 @@ machine(MachineType:TCC, "TCC Cache")
     i_invL2;
   }
 
-  transition({I, V}, InvCache, I) {TagArrayRead, TagArrayWrite} {
+  transition({I, V}, InvCache, II) {TagArrayRead, TagArrayWrite} {
+    t_allocateTBE;
     i_invL2;
-    ir_invL2Resp;
+    id_invL3;
     p_popRequestQueue;
+  }
+
+  transition(II, InvCacheAck, I) {
+    ir_invL2Resp;
+    dt_deallocateTBE;
+    pr_popResponseQueue;
+    wada_wakeUpAllDependentsAddr;
+  }
+
+  transition(II, InvCache) {
+    ia_mergeInvRequest;
   }
 
   transition(I, PrbDowngrade) {TagArrayRead} {
