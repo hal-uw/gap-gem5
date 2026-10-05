@@ -217,6 +217,23 @@ class ComputeUnit(ClockedObject):
         "TCP and cu as well as TCP data array "
         "access. Specified in GPU clock cycles",
     )
+    baseline_lds = Param.Bool(
+        False,
+        "Model the LDS as before the LDS fixes: map each byte address "
+        "to a bank (bank = addr % banks) and occupy the LDS-to-VRF bus "
+        "for a fixed time regardless of the instruction's data width",
+    )
+    baseline_l1 = Param.Bool(
+        False,
+        "Model the L1-to-VRF return bus as before the L1 fixes: occupy "
+        "it for the instruction's execution time instead of its "
+        "returned bytes over the bus width",
+    )
+    baseline_l2 = Param.Bool(
+        False,
+        "Model the L2 path as before the L2 fixes: memory requests carry "
+        "no GLC/SLC/NT cache-policy bits",
+    )
     lds_req_latency = Param.Int(
         1,
         "Latency for a local memory (LDS) request to be "

@@ -186,9 +186,10 @@ GlobalMemPipeline::exec()
         // instruction writes per lane (as counted for VRF writes in
         // VectorRegisterFile::scheduleWriteOperandsFromLoad) times its
         // active lanes, divided by the bus width, rounded up. This covers
-        // loads and atomics that return data.
+        // loads and atomics that return data. The baseline model
+        // occupies the bus for the instruction's execution time instead.
         constexpr int maxChargedBytesPerLane = 8;
-        if (m->isLoad() || m->isAtomicRet()) {
+        if (!computeUnit.baselineL1 && (m->isLoad() || m->isAtomicRet())) {
             int bytesPerLane = std::min(
                     m->numDstVecDWords() * (int)sizeof(uint32_t),
                     maxChargedBytesPerLane);

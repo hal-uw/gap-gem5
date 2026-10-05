@@ -58,7 +58,9 @@ def _get_xcd_layout(options):
         raise ValueError("num_xcds must be positive")
 
     if options.num_compute_units % num_xcds:
-        raise ValueError("num_compute_units must divide evenly across num_xcds")
+        raise ValueError(
+            "num_compute_units must divide evenly across num_xcds"
+        )
     cu_per_xcd = options.num_compute_units // num_xcds
 
     if options.num_tccs % num_xcds:
@@ -367,7 +369,12 @@ class TCC(RubyCache):
 
     def create(self, options):
         self.assoc = options.tcc_assoc
-        self.atomicLatency = options.atomic_alu_latency
+        # --baseline-l2 disables the atomic ALU model: with latency 0 the
+        # ALUs never block or delay an atomic.
+        if getattr(options, "baseline_l2", False):
+            self.atomicLatency = 0
+        else:
+            self.atomicLatency = options.atomic_alu_latency
         self.atomicALUs = options.tcc_num_atomic_alus // options.num_tccs
         if hasattr(options, "bw_scalor") and options.bw_scalor > 0:
             s = options.num_compute_units
@@ -894,10 +901,17 @@ def construct_gpudirs(options, system, ruby_system, network):
         dir_cntrl.requestToMemory = MessageBuffer()
         dir_cntrl.responseFromMemory = MessageBuffer()
 
-        # Create memory controllers too
-        mem_type = ObjectList.mem_list.get(options.dgpu_mem_type)
+        # Create memory controllers too. --baseline-memory uses the DRAM
+        # from before HBM2: an HBM_1000_4H_1x128 interface behind a plain
+        # MemCtrl, ignoring --dgpu-mem-type, --hbm-ctrl and SimpleMemory.
+        baseline_memory = getattr(options, "baseline_memory", False)
+        if baseline_memory:
+            mem_type = ObjectList.mem_list.get("HBM_1000_4H_1x128")
+        else:
+            mem_type = ObjectList.mem_list.get(options.dgpu_mem_type)
+        hbm_ctrl = options.hbm_ctrl and not baseline_memory
 
-        if options.hbm_ctrl:
+        if hbm_ctrl:
             # If HBM controller is enabled,
             # set up dram interfaces for two pseudo channels per HBMCtrl
             dram_intf = MemConfig.create_mem_intf(
@@ -929,14 +943,15 @@ def construct_gpudirs(options, system, ruby_system, network):
                 options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
-            dram_intf = m5.objects.SimpleMemory(
-                range=dram_intf.range,
-                bandwidth=options.simplemem_bw,
-                latency="70ns",
-            )
+            if not baseline_memory:
+                dram_intf = m5.objects.SimpleMemory(
+                    range=dram_intf.range,
+                    bandwidth=options.simplemem_bw,
+                    latency="70ns",
+                )
 
         if issubclass(type(dram_intf), DRAMInterface):
-            if options.hbm_ctrl:
+            if hbm_ctrl:
                 mem_ctrl = m5.objects.HBMCtrl(
                     dram=dram_intf,
                     dram_2=dram_intf_2,
@@ -951,7 +966,7 @@ def construct_gpudirs(options, system, ruby_system, network):
         if hasattr(mem_ctrl, "dram"):
             mem_ctrl.dram.enable_dram_powerdown = False
 
-        if options.hbm_ctrl:
+        if hbm_ctrl:
             dir_cntrl.addr_ranges = [dram_intf.range, dram_intf_2.range]
         else:
             dir_cntrl.addr_ranges = dram_intf.range
@@ -960,7 +975,7 @@ def construct_gpudirs(options, system, ruby_system, network):
         # every line it holds, so index its L3 above them; otherwise only a
         # fraction of the L3 sets are reachable. With XOR hashing no single
         # bit is fixed per directory, which this does not handle.
-        if options.hbm_ctrl:
+        if hbm_ctrl:
             intlv_masks = dram_intf.range.masks + dram_intf_2.range.masks
         else:
             intlv_masks = dram_intf.range.masks
@@ -1200,9 +1215,7 @@ def construct_cmdprocs(options, system, ruby_system, network):
 
         tcp_cntrl.mandatoryQueue = MessageBuffer()
 
-        sqc_cntrl = SQCCntrl(
-            TCC_select_num_bits=TCC_bits, TCC_select_xcd_id=0
-        )
+        sqc_cntrl = SQCCntrl(TCC_select_num_bits=TCC_bits, TCC_select_xcd_id=0)
         sqc_cntrl.create(options, ruby_system, system)
 
         exec("ruby_system.sqc_cntrl%d = sqc_cntrl" % sqc_ID)
