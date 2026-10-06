@@ -40,6 +40,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   int TCC_select_num_bits;
   int num_xcds := 1;
   bool useL3OnWT := "False";
+  bool L3Exclusive := "False";
   bool L2isWB;
   Cycles to_memory_controller_latency := 1;
 
@@ -100,6 +101,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     CtoD,               desc="...";
     WriteThrough,       desc="WriteThrough Message";
     Atomic,             desc="Atomic Message";
+    InvCache,            desc="Invalidate directory cache";
 
     // writebacks
     VicDirty,           desc="...";
@@ -438,6 +440,8 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         } else if (in_msg.Type == CoherenceRequestType:WriteFlush) {
             DPRINTF(RubySlicc, "Got Flush from %s on %s\n", in_msg.Requestor, in_msg.addr);
             trigger(Event:Flush, in_msg.addr, entry, tbe);
+        } else if (in_msg.Type == CoherenceRequestType:InvCache) {
+            trigger(Event:InvCache, in_msg.addr, entry, tbe);
         } else {
           error("Bad request message type");
         }
@@ -599,6 +603,21 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     }
   }
 
+  action(i_invL3Bar, "ib", desc="invalidate directory cache for a BAR write") {
+    if (GPUonly && L3CacheMemory.isTagPresent(address)) {
+      L3CacheMemory.deallocate(address);
+    }
+    peek(requestNetwork_in, CPURequestMsg) {
+      enqueue(responseNetwork_out, ResponseMsg, response_latency) {
+        out_msg.addr := address;
+        out_msg.Type := CoherenceResponseType:InvCacheAck;
+        out_msg.Sender := machineID;
+        out_msg.Destination.add(in_msg.Requestor);
+        out_msg.MessageSize := MessageSizeType:Response_Control;
+      }
+    }
+  }
+
   action(rf_sendResponseFlush, "rf", desc="send Flush Ack") {
     peek(memQueue_in, MemoryMsg) {
       enqueue(responseNetwork_out, ResponseMsg, 1) {
@@ -645,7 +664,14 @@ machine(MachineType:Directory, "AMD Baseline protocol")
 
         tbe.L3Hit := true;
         tbe.MemData := true;
-        L3CacheMemory.deallocate(address);
+        if (GPUonly && !L3Exclusive) {
+          // CDNA 3 Infinity Cache is a non-destructive memory-side cache,
+          // including for DMA/I/O traffic.
+          L3CacheMemory.setMRU(address);
+        } else {
+          // CPU-side behavior or experimental GPU exclusive policy.
+          L3CacheMemory.deallocate(address);
+        }
       } else {
         enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
           out_msg.addr := address;
@@ -672,16 +698,22 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         tbe.LastSender := entry.LastSender;
         tbe.L3Hit := true;
         tbe.MemData := true;
-        L3CacheMemory.deallocate(address);
+        if (GPUonly && !L3Exclusive) {
+          // CDNA 3 memory-side cache: retain the clean memory copy.
+          L3CacheMemory.setMRU(address);
+        } else {
+          // CPU-side behavior or experimental GPU exclusive policy.
+          L3CacheMemory.deallocate(address);
+        }
       } else {
         enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
           out_msg.addr := address;
-          out_msg.Type := MemoryRequestType:MEMORY_READ;
-          out_msg.Sender := machineID;
-          out_msg.MessageSize := MessageSizeType:Request_Control;
-        }
-      }
-    }
+         out_msg.Type := MemoryRequestType:MEMORY_READ;
+         out_msg.Sender := machineID;
+         out_msg.MessageSize := MessageSizeType:Request_Control;
+       }
+     }
+   }
   }
 
   //This action profiles a hit or miss for a given request or write back.
@@ -986,12 +1018,17 @@ machine(MachineType:Directory, "AMD Baseline protocol")
 
   action(d_writeDataToMemory, "d", desc="Write data to memory") {
     peek(requestNetwork_in, CPURequestMsg) {
-      enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
-        out_msg.addr := address;
-        out_msg.Type := MemoryRequestType:MEMORY_WB;
-        out_msg.Sender := machineID;
-        out_msg.MessageSize := MessageSizeType:Writeback_Data;
-        out_msg.DataBlk := in_msg.DataBlk;
+      // GPU: only write dirty data to memory. Clean evictions are no-ops
+      // since memory already has the data.
+      if (!GPUonly || in_msg.Type == CoherenceRequestType:VicDirty ||
+          in_msg.Dirty) {
+        enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
+          out_msg.addr := address;
+          out_msg.Type := MemoryRequestType:MEMORY_WB;
+          out_msg.Sender := machineID;
+          out_msg.MessageSize := MessageSizeType:Writeback_Data;
+          out_msg.DataBlk := in_msg.DataBlk;
+        }
       }
       if (tbe.Dirty == false) {
           // have to update the TBE, too, because of how this
@@ -1209,6 +1246,9 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   }
 
   action(al_allocateL3Block, "al", desc="allocate the L3 block on WB") {
+    // GPU memory-side policy: write dirty data through to memory, then retain a
+    // clean copy in L3. Experimental exclusive policy uses victim-cache fills.
+    // CPU: original behavior — always fill.
     peek(requestNetwork_in, CPURequestMsg) {
       if (L3CacheMemory.isTagPresent(address)) {
         CacheEntry entry := static_cast(CacheEntry, "pointer", L3CacheMemory.lookup(address));
@@ -1223,14 +1263,19 @@ machine(MachineType:Directory, "AMD Baseline protocol")
       } else {
         if (L3CacheMemory.cacheAvail(address) == false) {
           Addr victim := L3CacheMemory.cacheProbe(address);
-          CacheEntry victim_entry := static_cast(CacheEntry, "pointer",
-                                                 L3CacheMemory.lookup(victim));
-          enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
-            out_msg.addr := victim;
-            out_msg.Type := MemoryRequestType:MEMORY_WB;
-            out_msg.Sender := machineID;
-            out_msg.MessageSize := MessageSizeType:Writeback_Data;
-            out_msg.DataBlk := victim_entry.DataBlk;
+          if (GPUonly) {
+            // GPU L3 (Infinity Cache) is read-only — evicted entries are
+            // always clean, so silent drop is correct.
+          } else {
+            CacheEntry victim_entry := static_cast(CacheEntry, "pointer",
+                                                   L3CacheMemory.lookup(victim));
+            enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
+              out_msg.addr := victim;
+              out_msg.Type := MemoryRequestType:MEMORY_WB;
+              out_msg.Sender := machineID;
+              out_msg.MessageSize := MessageSizeType:Writeback_Data;
+              out_msg.DataBlk := victim_entry.DataBlk;
+            }
           }
           L3CacheMemory.deallocate(victim);
         }
@@ -1245,7 +1290,16 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   }
 
   action(alwt_allocateL3BlockOnWT, "alwt", desc="allocate the L3 block on WT") {
-    if ((tbe.wtData || tbe.atomicData) && useL3OnWT) {
+    // GPU dirs: fill L3 on all completions (reads + writes) when enabled.
+    // In memory-side mode: skip refill on clean GPU read L3 hits (already kept by
+    //   setMRU). If a probe supplied newer dirty data, refresh the L3 entry.
+    //   Still fill on an L3 miss (new data from HBM) and WT/atomic L3 hit.
+    // In experimental exclusive mode, do not fill on read completion; lower-level
+    // evictions populate L3 through al_allocateL3Block instead.
+    // CPU dirs: original behavior — only fill on WT/atomic data.
+    if ((GPUonly && useL3OnWT && !L3Exclusive &&
+         !(tbe.L3Hit && !tbe.Dirty && !tbe.wtData && !tbe.atomicData)) ||
+        (!GPUonly && (tbe.wtData || tbe.atomicData) && useL3OnWT)) {
       //This tag check does not need to be counted as a hit or Miss, it has already been recorded.
       if (L3CacheMemory.isTagPresent(address)) {
         CacheEntry entry := static_cast(CacheEntry, "pointer", L3CacheMemory.lookup(address));
@@ -1255,14 +1309,19 @@ machine(MachineType:Directory, "AMD Baseline protocol")
       } else {
         if (L3CacheMemory.cacheAvail(address) == false) {
           Addr victim := L3CacheMemory.cacheProbe(address);
-          CacheEntry victim_entry := static_cast(CacheEntry, "pointer",
-                                                 L3CacheMemory.lookup(victim));
-          enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
-            out_msg.addr := victim;
-            out_msg.Type := MemoryRequestType:MEMORY_WB;
-            out_msg.Sender := machineID;
-            out_msg.MessageSize := MessageSizeType:Writeback_Data;
-            out_msg.DataBlk := victim_entry.DataBlk;
+          if (GPUonly) {
+            // GPU L3 (Infinity Cache) is read-only — evicted entries are
+            // always clean, so silent drop is correct.
+          } else {
+            CacheEntry victim_entry := static_cast(CacheEntry, "pointer",
+                                                   L3CacheMemory.lookup(victim));
+            enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
+              out_msg.addr := victim;
+              out_msg.Type := MemoryRequestType:MEMORY_WB;
+              out_msg.Sender := machineID;
+              out_msg.MessageSize := MessageSizeType:Writeback_Data;
+              out_msg.DataBlk := victim_entry.DataBlk;
+            }
           }
           L3CacheMemory.deallocate(victim);
         }
@@ -1352,6 +1411,14 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   */
 
   // TRANSITIONS
+  transition({U, BL, BDR_M, BDW_M, BS_M, BM_M, B_M, BP,
+              BDR_PM, BDW_PM, BS_PM, BM_PM, B_PM, BDR_Pm,
+              BDW_Pm, BS_Pm, BM_Pm, B_Pm, B, BL2, BL2_Pm,
+              BL2_M, F}, InvCache) {
+    i_invL3Bar;
+    p_popRequestQueue;
+  }
+
   transition({BL, BL2, BL2_Pm, BL2_M, BDR_M, BDW_M, BS_M, BM_M, B_M, BP, BDR_PM, BDW_PM, BS_PM, BM_PM, B_PM, BDR_Pm, BDW_Pm, BS_Pm, BM_Pm, B_Pm, B}, {RdBlkS, RdBlkM, RdBlk, CtoD}) {
       st_stallAndWaitRequest;
   }
@@ -1543,21 +1610,40 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     ptl_popTriggerQueue;
   }
 
-  transition(BDR_M, MemData, U) {
+  transition(BDR_M, MemData, U) {L3TagArrayWrite, L3DataArrayWrite} {
     mt_writeMemDataToTBE;
     dd_sendResponseDmaData;
+    alwt_allocateL3BlockOnWT;
     wada_wakeUpAllDependentsAddr;
     dt_deallocateTBE;
     pm_popMemQueue;
   }
 
-  transition(BDW_M, MemData, U) {
+  transition(BDR_M, L3Hit, U) {L3TagArrayWrite, L3DataArrayWrite} {
+    dd_sendResponseDmaData;
+    alwt_allocateL3BlockOnWT;
+    wada_wakeUpAllDependentsAddr;
+    dt_deallocateTBE;
+    ptl_popTriggerQueue;
+  }
+
+  transition(BDW_M, MemData, U) {L3TagArrayWrite, L3DataArrayWrite} {
     mt_writeMemDataToTBE;
     wd_writeBackData;
     da_sendResponseDmaAck;
+    alwt_allocateL3BlockOnWT;
     wada_wakeUpAllDependentsAddr;
     dt_deallocateTBE;
     pm_popMemQueue;
+  }
+
+  transition(BDW_M, L3Hit, U) {L3DataArrayWrite, L3TagArrayWrite} {
+    wd_writeBackData;
+    da_sendResponseDmaAck;
+    alwt_allocateL3BlockOnWT;
+    wada_wakeUpAllDependentsAddr;
+    dt_deallocateTBE;
+    ptl_popTriggerQueue;
   }
 
   transition(BS_M, MemData, B){L3TagArrayWrite, L3DataArrayWrite} {
@@ -1670,14 +1756,24 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     pm_popMemQueue;
   }
 
-  transition(BL2_M, MemData, U) {
+  transition(BL2_M, MemData, U) {L3TagArrayWrite, L3DataArrayWrite} {
     // Got the memory we were waiting for. We can unblock now.
     mt_writeMemDataToTBE;
     dd_sendResponseDmaData;
+    alwt_allocateL3BlockOnWT;
     wada_wakeUpAllDependentsAddr;
     pd_popDmaRequestQueue;
     dt_deallocateTBE;
     pm_popMemQueue;
+  }
+
+  transition(BL2_M, L3Hit, U) {L3TagArrayWrite, L3DataArrayWrite} {
+    dd_sendResponseDmaData;
+    alwt_allocateL3BlockOnWT;
+    wada_wakeUpAllDependentsAddr;
+    pd_popDmaRequestQueue;
+    dt_deallocateTBE;
+    ptl_popTriggerQueue;
   }
 
   transition(BDR_PM, ProbeAcksComplete, BDR_M) {
@@ -1761,6 +1857,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
  transition(U, Flush, F) {L3TagArrayRead, L3TagArrayWrite} {
     t_allocateTBE;
     f_writeFlushDataToMemory;
+    alwt_allocateL3BlockOnWT;
     w_sendResponseWBAck;
     p_popRequestQueue;
  }

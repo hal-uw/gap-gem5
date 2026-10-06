@@ -284,6 +284,7 @@ void
 GpuTLB::demapPage(Addr va, uint64_t asn)
 {
     DPRINTF(GPUTLB, "Demapping vaddr %#x.\n", va);
+    walker->invalidatePWC();
     for (auto ps : logPageShiftList) {
         int set = getSet(va, ps);
         auto entry = lookupIt(va, ps, false);

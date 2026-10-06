@@ -97,6 +97,7 @@ enumeration(CoherenceResponseType, desc="Coherence Response Types") {
   CPUCancelWB,     desc="want to cancel WB to Memory";
   MemData,         desc="Data from Memory";
   InvL2Resp,       desc="Invalidate L2 response";
+  InvCacheAck,     desc="Invalidate directory cache response";
 
   // for regions
   PrivateAck,      desc="Ack that r-buf received private notify";

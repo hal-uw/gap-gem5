@@ -1159,6 +1159,11 @@ ComputeUnit::ScalarDataPort::handleResponse(PacketPtr pkt)
 {
     // From scalar cache invalidate that was issued at kernel start.
     if (pkt->req->isKernel()) {
+        SenderState *sender_state =
+            safe_cast<SenderState *>(pkt->senderState);
+        assert(sender_state->_gpuDynInst);
+        computeUnit->shader->dispatcher().updateInvCounter(
+            sender_state->_gpuDynInst->kern_id);
         delete pkt->senderState;
         delete pkt;
 
@@ -1260,6 +1265,11 @@ ComputeUnit::SQCPort::recvTimingResp(PacketPtr pkt)
             computeUnit->handleSQCReturn(pkt);
         }
     } else {
+        if (pkt->req->isKernel()) {
+            assert(sender_state->kernId >= 0);
+            computeUnit->shader->dispatcher().updateInvCounter(
+                sender_state->kernId);
+        }
         delete pkt->senderState;
         delete pkt;
     }
