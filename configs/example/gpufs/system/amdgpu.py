@@ -93,13 +93,16 @@ def createGPU(system, args):
                 scalar_mem_req_latency=args.scalar_mem_req_latency,
                 scalar_mem_resp_latency=args.scalar_mem_resp_latency,
                 lds_req_latency=args.lds_req_latency,
+                baseline_lds=args.baseline_lds,
+                baseline_l1=args.baseline_l1,
+                baseline_l2=args.baseline_l2,
                 mfma_scale=args.mfma_scale,
                 localDataStore=LdsState(
                     banks=args.numLdsBanks,
                     bankConflictPenalty=args.ldsBankConflictPenalty,
                     size=args.lds_size,
                 ),
-                revert_gm_fix=args.gap_revert_gm_fix,
+                revert_gm_fix=args.gap_revert_gm_fix or args.baseline_l1,
             )
         )
 

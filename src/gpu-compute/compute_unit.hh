@@ -337,6 +337,12 @@ class ComputeUnit : public ClockedObject
     Cycles sqc_bus_latency;
     // VRF to LM Bus latency
     Cycles vrf_lm_bus_latency;
+    // Model the LDS as before the LDS fixes (--baseline-lds)
+    bool baselineLds;
+    // Model the L1-to-VRF bus as before the L1 fixes (--baseline-l1)
+    bool baselineL1;
+    // Model the L2 path as before the L2 fixes (--baseline-l2)
+    bool baselineL2;
 
     // tracks the last cycle a vector instruction was executed on a SIMD
     std::vector<uint64_t> lastExecCycle;

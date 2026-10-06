@@ -110,10 +110,14 @@ LocalMemPipeline::exec()
         int busLength = m->isLoad()    ? computeUnit.loadBusLength()
                         : m->isStore() ? computeUnit.storeBusLength()
                                        : computeUnit.loadBusLength();
-        busLength = m->isLoad() ? (busLength/4) * m->numSrcScalarDWords()
-                    : m->isStore()
-                        ? (busLength/4) * m->numDstScalarDWords()
-                        : (busLength/4) * m->numSrcScalarDWords();
+        // The baseline model uses the same bus length for every data
+        // width.
+        if (!computeUnit.baselineLds) {
+            busLength = m->isLoad() ? (busLength/4) * m->numSrcScalarDWords()
+                        : m->isStore()
+                            ? (busLength/4) * m->numDstScalarDWords()
+                            : (busLength/4) * m->numSrcScalarDWords();
+        }
         computeUnit.locMemToVrfBus.set(
             computeUnit.cyclesToTicks(Cycles(busLength)));
         if (computeUnit.shader->coissue_return == 0) {

@@ -5064,12 +5064,19 @@ Inst_VOPC__V_CMP_EQ_U32::execute(GPUDynInstPtr gpuDynInst)
     src0.readSrc();
     src1.read();
 
-    panic_if(isSDWAInst(), "SDWA not supported for %s", _opcode);
     panic_if(isDPPInst(), "DPP not supported for %s", _opcode);
+
+    auto cmpImpl = [](uint32_t a, uint32_t b) { return a == b ? 1 : 0; };
+
+    if (isSDWAInst()) {
+        // sdwabHelper writes the destination (VCC or an SGPR pair) itself.
+        sdwabHelper<uint32_t>(gpuDynInst, cmpImpl);
+        return;
+    }
 
     for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
         if (wf->execMask(lane)) {
-            vcc.setBit(lane, src0[lane] == src1[lane] ? 1 : 0);
+            vcc.setBit(lane, cmpImpl(src0[lane], src1[lane]));
         }
     }
 

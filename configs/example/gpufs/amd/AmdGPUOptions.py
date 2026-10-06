@@ -293,6 +293,45 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
+        "--baseline-lds",
+        action="store_true",
+        default=False,
+        help="Model the LDS as before the LDS fixes, to measure their "
+        "effect: byte-address bank mapping (bank = addr %% banks) and a "
+        "fixed LDS-to-VRF bus occupancy that ignores the instruction's "
+        "data width",
+    )
+
+    parser.add_argument(
+        "--baseline-l1",
+        action="store_true",
+        default=False,
+        help="Model the L1-to-VRF return bus as before the L1 fixes, to "
+        "measure their effect: occupy it for the instruction's execution "
+        "time instead of its returned bytes over the bus width",
+    )
+
+    parser.add_argument(
+        "--baseline-l2",
+        action="store_true",
+        default=False,
+        help="Model the L2 path as before the L2 fixes, to measure their "
+        "effect: oldest-request-first global memory responses (as "
+        "--gap-revert-gm-fix), no SC0/SC1/NT cache-policy bits on memory "
+        "requests (no GLC/SLC cache bypass), and no atomic ALU model "
+        "(atomic ALU latency 0)",
+    )
+
+    parser.add_argument(
+        "--baseline-memory",
+        action="store_true",
+        default=False,
+        help="Use the GPU DRAM from before HBM2, to measure the effect of "
+        "the memory changes: an HBM_1000_4H_1x128 interface behind a plain "
+        "MemCtrl per directory (overrides --dgpu-mem-type and --hbm-ctrl)",
+    )
+
+    parser.add_argument(
         "--vrf-gm-bus-latency",
         type=int,
         default=1,

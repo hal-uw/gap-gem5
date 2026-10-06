@@ -58,7 +58,9 @@ def _get_xcd_layout(options):
         raise ValueError("num_xcds must be positive")
 
     if options.num_compute_units % num_xcds:
-        raise ValueError("num_compute_units must divide evenly across num_xcds")
+        raise ValueError(
+            "num_compute_units must divide evenly across num_xcds"
+        )
     cu_per_xcd = options.num_compute_units // num_xcds
 
     if options.num_tccs % num_xcds:
@@ -175,6 +177,9 @@ class TCPCache(RubyCache):
     def create(self, options):
         self.size = MemorySize(options.tcp_size)
         self.assoc = options.tcp_assoc
+        # Index sets above the line offset (RubyCache defaults to 6,
+        # i.e. 64B lines; larger lines would leave sets unused).
+        self.start_index_bit = int(math.log(options.cacheline_size, 2))
         self.resourceStalls = options.no_tcc_resource_stalls
         if hasattr(options, "tcp_rp"):
             self.replacement_policy = ObjectList.rp_list.get(options.tcp_rp)()
@@ -264,12 +269,17 @@ class TCPCntrl(GPU_VIPER_TCP_Controller, CntrlBase):
 class SQCCache(RubyCache):
     dataArrayBanks = 8
     tagArrayBanks = 8
-    dataAccessLatency = 1
-    tagAccessLatency = 1
 
     def create(self, options):
         self.size = MemorySize(options.sqc_size)
         self.assoc = options.sqc_assoc
+        # Index sets above the line offset (RubyCache defaults to 6,
+        # i.e. 64B lines; larger lines would leave sets unused).
+        self.start_index_bit = int(math.log(options.cacheline_size, 2))
+        self.dataAccessLatency = options.sqc_data_access_latency
+        self.tagAccessLatency = options.sqc_tag_access_latency
+        self.dataArrayBanks = options.sqc_data_array_banks
+        self.tagArrayBanks = options.sqc_tag_array_banks
         if hasattr(options, "sqc_rp"):
             self.replacement_policy = ObjectList.rp_list.get(options.sqc_rp)()
 
@@ -281,6 +291,7 @@ class SQCCntrl(GPU_VIPER_SQC_Controller, CntrlBase):
         self.L1cache = SQCCache()
         self.L1cache.create(options)
         self.L1cache.resourceStalls = options.no_resource_stalls
+        self.issue_latency = options.sqc_issue_latency
 
         self.sequencer = VIPERSequencer()
 
@@ -307,6 +318,9 @@ class ScalarCache(SQCCache):
     def create(self, options):
         self.size = MemorySize(options.scalar_size)
         self.assoc = options.scalar_assoc
+        # Index sets above the line offset (RubyCache defaults to 6,
+        # i.e. 64B lines; larger lines would leave sets unused).
+        self.start_index_bit = int(math.log(options.cacheline_size, 2))
         if hasattr(options, "scalar_rp"):
             self.replacement_policy = ObjectList.rp_list.get(
                 options.scalar_rp
@@ -355,15 +369,20 @@ class TCC(RubyCache):
 
     def create(self, options):
         self.assoc = options.tcc_assoc
-        self.atomicLatency = options.atomic_alu_latency
+        # --baseline-l2 disables the atomic ALU model: with latency 0 the
+        # ALUs never block or delay an atomic.
+        if getattr(options, "baseline_l2", False):
+            self.atomicLatency = 0
+        else:
+            self.atomicLatency = options.atomic_alu_latency
         self.atomicALUs = options.tcc_num_atomic_alus // options.num_tccs
         if hasattr(options, "bw_scalor") and options.bw_scalor > 0:
             s = options.num_compute_units
-            tcc_size = s * 128
-            tcc_size = str(tcc_size) + "KiB"
-            self.size = MemorySize(tcc_size)
-            self.dataArrayBanks = 64
-            self.tagArrayBanks = 64
+            # tcc_size = s * 128
+            # tcc_size = str(tcc_size) + "KiB"
+            self.size = MemorySize(options.tcc_size)
+            self.dataArrayBanks = options.tcc_num_banks
+            self.tagArrayBanks = options.tcc_num_banks
         else:
             self.size = MemorySize(options.tcc_size)
             self.dataArrayBanks = options.tcc_num_banks  # number of data banks
@@ -393,11 +412,11 @@ class TCCCntrl(GPU_VIPER_TCC_Controller, CntrlBase):
         self.L2cache.resourceStalls = options.no_tcc_resource_stalls
 
         self.ruby_system = ruby_system
-        if hasattr(options, "fabric_clock") and hasattr(
-            options, "gpu_voltage"
-        ):
+        # The L2 (TCC) is part of the GPU and runs on the GPU clock, like the
+        # L1 caches; the directories/L3 and the network use the fabric clock.
+        if hasattr(options, "gpu_clock") and hasattr(options, "gpu_voltage"):
             self.clk_domain = SrcClockDomain(
-                clock=options.fabric_clock,
+                clock=options.gpu_clock,
                 voltage_domain=VoltageDomain(voltage=options.gpu_voltage),
             )
 
@@ -409,22 +428,24 @@ class L3Cache(RubyCache):
     dataArrayBanks = 16
     tagArrayBanks = 16
 
-    def create(self, options, ruby_system, system, num_dirs=None):
-        # num_dirs: number of directory controllers sharing this L3 pool.
-        # Defaults to options.num_dirs (CPU-side) if not specified.
-        if num_dirs is None:
-            num_dirs = options.num_dirs
-        self.size = MemorySize(options.l3_size)
-        self.size.value /= num_dirs
+    def create(
+        self, options, ruby_system, system, slice_size=None, num_dirs=None
+    ):
+        # slice_size, when given, is this directory's share of the L3.
+        # Otherwise --l3_size is split across num_dirs directories.
+        if slice_size is not None:
+            self.size = slice_size
+        else:
+            if num_dirs is None:
+                num_dirs = options.num_dirs
+            self.size = MemorySize(options.l3_size)
+            self.size.value /= num_dirs
         self.assoc = options.l3_assoc
-        # Each directory controller owns one L3 slice. Configure the internal
-        # data and tag bank count of that slice independently of the number of
-        # directory controllers.
         self.dataArrayBanks = options.l3_num_banks
         self.tagArrayBanks = options.l3_num_banks
         self.dataAccessLatency = options.l3_data_latency
         self.tagAccessLatency = options.l3_tag_latency
-        self.resourceStalls = False
+        self.resourceStalls = options.l3_resource_stalls
         self.replacement_policy = BRRIPRP()
 
 
@@ -460,7 +481,15 @@ class L3Cntrl(GPU_VIPER_L3Cache_Controller, CntrlBase):
 
 
 class DirCntrl(GPU_VIPER_Directory_Controller, CntrlBase):
-    def create(self, options, dir_ranges, ruby_system, system, num_dirs=None):
+    def create(
+        self,
+        options,
+        dir_ranges,
+        ruby_system,
+        system,
+        l3_slice_size=None,
+        num_dirs=None,
+    ):
         self.version = self.versionCount()
 
         self.response_latency = 30
@@ -471,8 +500,13 @@ class DirCntrl(GPU_VIPER_Directory_Controller, CntrlBase):
         )
 
         self.L3CacheMemory = L3Cache()
-        self.L3CacheMemory.create(options, ruby_system, system,
-                                  num_dirs=num_dirs)
+        self.L3CacheMemory.create(
+            options,
+            ruby_system,
+            system,
+            slice_size=l3_slice_size,
+            num_dirs=num_dirs,
+        )
 
         self.l3_hit_latency = max(
             self.L3CacheMemory.dataAccessLatency,
@@ -517,20 +551,58 @@ def define_options(parser):
     )
     parser.add_argument("--cpu-to-dir-latency", type=int, default=120)
     parser.add_argument("--gpu-to-dir-latency", type=int, default=120)
+    parser.add_argument("--dir-to-mem-ctrl-latency", type=int, default=1)
     parser.add_argument(
         "--no-resource-stalls", action="store_false", default=True
     )
     parser.add_argument(
         "--no-tcc-resource-stalls", action="store_false", default=True
     )
+    parser.add_argument(
+        "--l3-resource-stalls",
+        action="store_true",
+        default=False,
+        help="Model L3 tag/data array bank occupancy (--l3-tag-latency / "
+        "--l3-data-latency cycles per access) and stall on busy banks",
+    )
     parser.add_argument("--use-L3-on-WT", action="store_true", default=False)
-    parser.add_argument("--use-gpu-l3", action="store_true", default=False,
-                        help="Enable L3 (Infinity Cache) fills for GPU "
-                             "directory controllers")
-    parser.add_argument("--l3-exclusive", action="store_true", default=False,
-                        help="Experimental non-CDNA3 victim-cache policy: "
-                             "GPU reads consume L3 entries and fills occur "
-                             "from lower-level evictions")
+    parser.add_argument(
+        "--use-gpu-l3",
+        action="store_true",
+        default=False,
+        help="Enable L3 (Infinity Cache) fills for GPU directory controllers",
+    )
+    parser.add_argument(
+        "--l3-exclusive",
+        action="store_true",
+        default=False,
+        help="Experimental non-CDNA3 victim-cache policy: GPU reads consume "
+        "L3 entries and fills occur from lower-level evictions",
+    )
+    parser.add_argument(
+        "--gpu-dir-link-width-bits",
+        type=int,
+        default=None,
+        help="Width in bits of the GPU network links on a GPU directory's "
+        "path (its external link and its router's internal links). By "
+        "default these are half of --link-width-bits.",
+    )
+    parser.add_argument(
+        "--dgpu-l3-size",
+        type=str,
+        default=None,
+        help="Total L3 size across the dGPU directories, split evenly "
+        "between them (e.g. 64MiB). By default each dGPU directory gets "
+        "--l3_size divided by --num-dirs.",
+    )
+    parser.add_argument(
+        "--infinity-cache",
+        action="store_true",
+        default=False,
+        help="Model the dGPU directory L3 as the MI300X Infinity Cache: "
+        "reads fill it (non-temporal reads do not) and read hits keep "
+        "their line.",
+    )
     parser.add_argument("--num-tbes", type=int, default=256)
     parser.add_argument("--l2-latency", type=int, default=50)  # load to use
     parser.add_argument(
@@ -550,6 +622,36 @@ def define_options(parser):
     )
     parser.add_argument(
         "--sqc-assoc", type=int, default=8, help="SQC cache assoc"
+    )
+    parser.add_argument(
+        "--sqc-issue-latency",
+        type=int,
+        default=80,
+        help="Cycles for SQC to issue a miss request down to TCC",
+    )
+    parser.add_argument(
+        "--sqc-tag-access-latency",
+        type=int,
+        default=1,
+        help="Tag access latency in SQC (icache)",
+    )
+    parser.add_argument(
+        "--sqc-data-access-latency",
+        type=int,
+        default=1,
+        help="Data access latency in SQC (icache)",
+    )
+    parser.add_argument(
+        "--sqc-data-array-banks",
+        type=int,
+        default=8,
+        help="Number of banks in SQC (icache) data array",
+    )
+    parser.add_argument(
+        "--sqc-tag-array-banks",
+        type=int,
+        default=8,
+        help="Number of banks in SQC (icache) tag array",
     )
     parser.add_argument(
         "--scalar-size", type=str, default="32KiB", help="Scalar cache size"
@@ -636,7 +738,7 @@ def define_options(parser):
     parser.add_argument(
         "--tcc-num-atomic-alus",
         type=int,
-        default=64,
+        default=32,
         help="Number of atomic ALUs in the TCC",
     )
     parser.add_argument(
@@ -648,7 +750,7 @@ def define_options(parser):
     parser.add_argument(
         "--tcc-num-banks",
         type=int,
-        default="16",
+        default="32",
         help="Num of banks in L2 cache",
     )
     parser.add_argument(
@@ -760,8 +862,16 @@ def construct_gpudirs(options, system, ruby_system, network):
     block_size_bits = int(math.log(options.cacheline_size, 2))
     numa_bit = block_size_bits + dir_bits - 1
 
+    l3_slice_size = None
+    if options.dgpu_l3_size is not None:
+        l3_slice_size = MemorySize(options.dgpu_l3_size)
+        l3_slice_size.value //= options.dgpu_num_dirs
+
     gpu_mem_range = AddrRange(0, size=options.dgpu_mem_size)
     for i in range(options.dgpu_num_dirs):
+        # Initial range for creating the directory. It is replaced below by
+        # the memory interfaces' ranges, which are what select the directory
+        # (with --hbm-ctrl, one more interleave bit for the pseudo-channel).
         addr_range = m5.objects.AddrRange(
             gpu_mem_range.start,
             size=gpu_mem_range.size(),
@@ -777,13 +887,24 @@ def construct_gpudirs(options, system, ruby_system, network):
             clk_domain=system.fabric_clk,
             num_xcds=getattr(options, "num_xcds", 1),
         )
-        dir_cntrl.create(options, [addr_range], ruby_system, system,
-                         num_dirs=options.dgpu_num_dirs)
+        dir_cntrl.create(
+            options,
+            [addr_range],
+            ruby_system,
+            system,
+            l3_slice_size,
+            num_dirs=options.dgpu_num_dirs,
+        )
         dir_cntrl.L3CacheMemory.start_index_bit = block_size_bits + dir_bits
         dir_cntrl.number_of_TBEs = options.num_tbes
         dir_cntrl.GPUonly = True
         dir_cntrl.useL3OnWT = options.use_gpu_l3
         dir_cntrl.L3Exclusive = options.l3_exclusive
+        dir_cntrl.l3AllocOnRead = options.infinity_cache
+        dir_cntrl.l3KeepOnReadHit = options.infinity_cache
+        dir_cntrl.to_memory_controller_latency = (
+            options.dir_to_mem_ctrl_latency
+        )
         dir_cntrl.L2isWB = options.WB_L2
 
         # Connect the Directory controller to the ruby network
@@ -816,10 +937,17 @@ def construct_gpudirs(options, system, ruby_system, network):
         dir_cntrl.requestToMemory = MessageBuffer()
         dir_cntrl.responseFromMemory = MessageBuffer()
 
-        # Create memory controllers too
-        mem_type = ObjectList.mem_list.get(options.dgpu_mem_type)
+        # Create memory controllers too. --baseline-memory uses the DRAM
+        # from before HBM2: an HBM_1000_4H_1x128 interface behind a plain
+        # MemCtrl, ignoring --dgpu-mem-type, --hbm-ctrl and SimpleMemory.
+        baseline_memory = getattr(options, "baseline_memory", False)
+        if baseline_memory:
+            mem_type = ObjectList.mem_list.get("HBM_1000_4H_1x128")
+        else:
+            mem_type = ObjectList.mem_list.get(options.dgpu_mem_type)
+        hbm_ctrl = options.hbm_ctrl and not baseline_memory
 
-        if options.hbm_ctrl:
+        if hbm_ctrl:
             # If HBM controller is enabled,
             # set up dram interfaces for two pseudo channels per HBMCtrl
             dram_intf = MemConfig.create_mem_intf(
@@ -851,14 +979,15 @@ def construct_gpudirs(options, system, ruby_system, network):
                 options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
-            dram_intf = m5.objects.SimpleMemory(
-                range=dram_intf.range,
-                bandwidth=options.simplemem_bw,
-                latency="70ns",
-            )
+            if not baseline_memory:
+                dram_intf = m5.objects.SimpleMemory(
+                    range=dram_intf.range,
+                    bandwidth=options.simplemem_bw,
+                    latency="70ns",
+                )
 
         if issubclass(type(dram_intf), DRAMInterface):
-            if options.hbm_ctrl:
+            if hbm_ctrl:
                 mem_ctrl = m5.objects.HBMCtrl(
                     dram=dram_intf,
                     dram_2=dram_intf_2,
@@ -873,10 +1002,29 @@ def construct_gpudirs(options, system, ruby_system, network):
         if hasattr(mem_ctrl, "dram"):
             mem_ctrl.dram.enable_dram_powerdown = False
 
-        if options.hbm_ctrl:
+        if hbm_ctrl:
             dir_cntrl.addr_ranges = [dram_intf.range, dram_intf_2.range]
         else:
             dir_cntrl.addr_ranges = dram_intf.range
+
+        # The interleave bits that select this directory are the same for
+        # every line it holds, so index its L3 above them; otherwise only a
+        # fraction of the L3 sets are reachable. With XOR hashing no single
+        # bit is fixed per directory, which this does not handle.
+        if hbm_ctrl:
+            intlv_masks = dram_intf.range.masks + dram_intf_2.range.masks
+        else:
+            intlv_masks = dram_intf.range.masks
+        if any(bin(m).count("1") > 1 for m in intlv_masks):
+            m5.util.fatal(
+                "GPU directory L3 indexing does not support XOR-hashed "
+                "directory interleaving"
+            )
+        if intlv_masks:
+            dir_cntrl.L3CacheMemory.start_index_bit = max(
+                m.bit_length() for m in intlv_masks
+            )
+
         # Append
         exec("ruby_system.gpu_dir_cntrl%d = dir_cntrl" % i)
         dir_cntrl_nodes.append(dir_cntrl)
@@ -1103,9 +1251,7 @@ def construct_cmdprocs(options, system, ruby_system, network):
 
         tcp_cntrl.mandatoryQueue = MessageBuffer()
 
-        sqc_cntrl = SQCCntrl(
-            TCC_select_num_bits=TCC_bits, TCC_select_xcd_id=0
-        )
+        sqc_cntrl = SQCCntrl(TCC_select_num_bits=TCC_bits, TCC_select_xcd_id=0)
         sqc_cntrl.create(options, ruby_system, system)
 
         exec("ruby_system.sqc_cntrl%d = sqc_cntrl" % sqc_ID)
@@ -1122,10 +1268,7 @@ def construct_tccs(options, system, ruby_system, network):
     tcc_cntrl_nodes = []
 
     for i in range(options.num_tccs):
-        tcc_cntrl = TCCCntrl(
-            l2_response_latency=options.TCC_latency,
-            clk_domain=system.fabric_clk,
-        )
+        tcc_cntrl = TCCCntrl(l2_response_latency=options.TCC_latency)
         tcc_cntrl.create(options, ruby_system, system)
         tcc_cntrl.l2_request_latency = options.gpu_to_dir_latency
         tcc_cntrl.l2_response_latency = options.TCC_latency

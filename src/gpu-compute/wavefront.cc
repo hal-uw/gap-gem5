@@ -1188,8 +1188,13 @@ Wavefront::exec()
     /**
      * we return here to avoid spurious errors related to flat insts
      * and their address segment resolution.
+     *
+     * Only return a token that ScheduleStage::fillDispatchList() took:
+     * scalar and memory-sync instructions never acquire one, and scalar
+     * memory instructions run regardless of the exec mask.
      */
-    if (execMask().none() && ii->needsToken()) {
+    if (execMask().none() && ii->needsToken() && !ii->isScalar() &&
+        !ii->isMemSync()) {
         computeUnit->getTokenManager()->recvTokens(1);
         return;
     }

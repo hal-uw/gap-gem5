@@ -398,15 +398,16 @@ class GPUDynInst : public GPUExecContext
     void
     setRequestFlags(RequestPtr req) const
     {
-        if (isGloballyCoherent()) {
+        // The baseline L2 model (--baseline-l2) sends no cache-policy bits.
+        if (isGloballyCoherent() && !cu->baselineL2) {
             req->setCacheCoherenceFlags(Request::GLC_BIT);
         }
 
-        if (isSystemCoherent()) {
+        if (isSystemCoherent() && !cu->baselineL2) {
             req->setCacheCoherenceFlags(Request::SLC_BIT);
         }
 
-        if (isNonTemporal()) {
+        if (isNonTemporal() && !cu->baselineL2) {
             req->setCacheCoherenceFlags(Request::NT_BIT);
         }
 
