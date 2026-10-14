@@ -27,10 +27,13 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-"""This file creates an X86 system with a KVM CPU and GPU device capable of
-running the MI300 ISA (gfx942). Most of this file sets up a runscript which
-will load in a binary, shell script, or python file from the host and run that
-within gem5. Jump to line 146 for list of system parameters to configure.
+"""Create an X86 KVM system with a scaled MI300X (gfx942) GPU model.
+
+The default configuration represents the compute and cache organization of
+one 38-CU XCD while retaining the existing GPU-FS platform and memory-image
+constraints. It is a simulation-scaled configuration, not a complete physical
+MI300X package model. Most of this file constructs a runscript that loads an
+application from the host and executes it inside gem5.
 """
 
 import argparse
@@ -69,7 +72,10 @@ if [ -e /usr/lib/firmware/amdgpu/mi300_discovery ]; then
 fi
 
 if [ -f /home/gem5/load_amdgpu.sh ]; then
-    sh /home/gem5/load_amdgpu.sh
+    bash /home/gem5/load_amdgpu.sh
+elif [ ! -f /lib/modules/`uname -r`/updates/dkms/amdgpu.ko ]; then
+    echo "ERROR: Missing DKMS package for kernel `uname -r`. Exiting gem5."
+    # m5 exit
 else
     # develop support
     echo "options amdgpu ip_block_mask=0x6f ppfeaturemask=0 dpm=0 audio=0 ras_enable=0 discovery=2" > /etc/modprobe.d/amdgpu.conf
@@ -106,6 +112,86 @@ chmod +x myapp
 """
 
 
+# Scaled MI300X GPU-FS configuration representing one 38-CU XCD.
+SCALED_MI300_DEFAULTS = {
+    "dgpu_mem_size": "16GiB",
+    "dgpu_mem_type": "HBM3_MI300X_1x64",
+    "dgpu_num_dirs": 64,
+    "dgpu_mem_locality": 1,
+    "cu_per_sa": 15,
+    "num_compute_units": 38,
+    "num_gpu_complex": 4,
+    "gpu_clock": "2.1GHz",
+    "fabric_clock": "1.3GHz",
+    "gpu_topology": "Crossbar",
+    "cpu_topology": "Crossbar",
+    "gpu_mesh_routers": 0,
+    "link_width_bits": 512,
+    "cu_per_sqc": 2,
+    "cu_per_scalar_cache": 2,
+    "simds_per_cu": 4,
+    "wfs_per_simd": 8,
+    "wf_size": 64,
+    "mfma_scale": 1.0,
+    "hbm_ctrl": True,
+    "issue_period": 2,
+    "scalar_issue_period": 1,
+    "lds_req_latency": 55,
+    "reg_alloc_policy": "dynamic",
+    "vreg_file_size": 2048,
+    "sreg_file_size": 3200,
+    "tcp_size": "32KiB",
+    "tcp_assoc": 16,
+    "tcp_num_banks": 16,
+    "TCP_latency": 1,
+    "TCP_latency_data": 1,
+    "tcp_issue_latency": 25,
+    "WB_L1": False,
+    "noL1": False,
+    "mandatory_queue_latency": 1,
+    "mem_req_latency": 62,
+    "mem_resp_latency": 62,
+    "scalar_mem_req_latency": 40,
+    "TCC_latency": 15,
+    "tcc_size": "4MiB",
+    "num_tccs": 16,
+    "tcc_assoc": 16,
+    "tcc_num_atomic_alus": 96,
+    "tcc_num_banks": 32,
+    "tcc_tag_access_latency": 1,
+    "tcc_data_access_latency": 2,
+    "l2_latency": 50,
+    "WB_L2": True,
+    "tcc_rp": "BRRIPRP",
+    "l3_data_latency": 20,
+    "l3_tag_latency": 15,
+    "use_L3_on_WT": False,
+    "use_gpu_l3": True,
+    "l3_exclusive": False,
+    "num_l3caches": 1,
+    "l3_size": "256MiB",
+    "l3_assoc": 16,
+    "num_dirs": 4,
+    "num_subcaches": 4,
+    "cpu_to_dir_latency": 120,
+    "gpu_to_dir_latency": 1,
+    "vrf_lm_bus_latency": 3,
+    "no_resource_stalls": False,
+    "no_tcc_resource_stalls": True,
+    "num_tbes": 512,
+    "sqc_size": "64KiB",
+    "sqc_assoc": 8,
+    "scalar_size": "16KiB",
+    "scalar_assoc": 8,
+    "max_coalesces_per_cycle": 10,
+    "max_cu_tokens": 160,
+    "glc_atomic_latency": 150,
+    "atomic_alu_latency": 25,
+    "cacheline_size": 128,
+    "pwc_fetch_bytes": 128,
+}
+
+
 def addDemoOptions(parser):
     parser.add_argument(
         "-a", "--app", default=None, help="GPU application to run"
@@ -120,6 +206,7 @@ def runMI300GPUFS(
     disk: Optional[AbstractResource] = None,
     kernel: Optional[AbstractResource] = None,
     app: Optional[AbstractResource] = None,
+    config_defaults=None,
 ):
     parser = argparse.ArgumentParser()
     runfs.addRunFSOptions(parser)
@@ -129,7 +216,10 @@ def runMI300GPUFS(
     GPUTLBOptions.tlb_options(parser)
     addDemoOptions(parser)
 
-    # Parse now so we can override options
+    if config_defaults is None:
+        config_defaults = SCALED_MI300_DEFAULTS
+    parser.set_defaults(**config_defaults)
+
     args = parser.parse_args()
     demo_runscript = ""
 
@@ -163,18 +253,10 @@ def runMI300GPUFS(
 
     args.script = tempRunscript
 
-    # Defaults for CPU
+    # The MI300 GPU-FS boot flow requires these fixed platform identities.
     args.cpu_type = "X86KvmCPU"
-    args.mem_size = "8GiB"
-
-    # Defaults for MI300X
+    args.mem_size = "16GiB"
     args.gpu_device = "MI300X"
-    args.dgpu_mem_size = "16GiB"  # GPU memory size, must be 16GiB currently.
-
-    # See: https://rocm.docs.amd.com/en/latest/conceptual/gpu-arch/mi300.html
-    # Topology for one XCD. Number of CUs is approximately 304 / 8, rounded
-    # up to 40 due to gem5 restriction of 4 CUs per SQC / scalar cache.
-    args.gpu_topology = "Crossbar"
 
     # Run gem5
     runfs.runGpuFSSystem(args)
