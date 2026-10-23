@@ -108,9 +108,9 @@ initMemReqHelper(GPUDynInstPtr gpuDynInst, MemCmd mem_req_type,
                 pkt2 = new Packet(req2, mem_req_type);
                 pkt1->dataStatic(
                     &(reinterpret_cast<T *>(gpuDynInst->d_data))[lane * N]);
-                pkt2->dataStatic(&(reinterpret_cast<T *>(
-                    gpuDynInst
-                        ->d_data))[lane * N + req1->getSize() / sizeof(T)]);
+                pkt2->dataStatic(reinterpret_cast<uint8_t *>(
+                    &((T *)gpuDynInst
+                        ->d_data)[lane * N]) + req1->getSize());
                 DPRINTF(GPUMem,
                         "CU%d: WF[%d][%d]: index: %d unaligned memory "
                         "request for %#x\n",
