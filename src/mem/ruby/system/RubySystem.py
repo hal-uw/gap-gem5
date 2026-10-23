@@ -48,6 +48,11 @@ class RubySystem(ClockedObject):
     memory_size_bits = Param.UInt32(
         64, "number of bits that a memory address requires"
     )
+    tcc_select_hash = Param.Bool(
+        False,
+        "Pick the TCC (L2 channel) by XOR-folding every address bit at and "
+        "above the TCC select field, instead of using the select bits alone",
+    )
 
     phys_mem = Param.SimpleMemory(NULL, "")
     system = Param.System(Parent.any, "system object")

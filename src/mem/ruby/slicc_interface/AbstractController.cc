@@ -520,6 +520,22 @@ AbstractController::broadcast(MachineType type)
     return dest;
 }
 
+MachineID
+AbstractController::mapAddressToRange(Addr addr, MachineType type,
+                                      int low_bit, int num_bits,
+                                      int cluster_id) const
+{
+    if (num_bits == 0 || m_ruby_system == nullptr ||
+        !m_ruby_system->getTCCSelectHash()) {
+        return ruby::mapAddressToRange(addr, type, low_bit, num_bits,
+                                       cluster_id);
+    }
+    MachineID mach = {type, 0};
+    mach.num = hashSelect(addr, low_bit, num_bits) +
+        (1 << num_bits) * cluster_id;
+    return mach;
+}
+
 NetDest
 AbstractController::mapAddressToRangeAcrossClusters(
     Addr addr, MachineType type, int low_bit, int num_bits,

@@ -72,6 +72,7 @@ class RubySystem : public ClockedObject
     int getRandomization() { return m_randomization; }
     uint32_t getBlockSizeBytes() { return m_block_size_bytes; }
     uint32_t getBlockSizeBits() { return m_block_size_bits; }
+    bool getTCCSelectHash() const { return m_tcc_select_hash; }
     uint32_t getMemorySizeBits() { return m_memory_size_bits; }
     bool getWarmupEnabled() { return m_warmup_enabled; }
     bool getCooldownEnabled() { return m_cooldown_enabled; }
@@ -146,6 +147,7 @@ class RubySystem : public ClockedObject
   private:
     // configuration parameters
     bool m_randomization;
+    bool m_tcc_select_hash;
     uint32_t m_block_size_bytes;
     uint32_t m_block_size_bits;
     uint32_t m_memory_size_bits;

@@ -74,6 +74,7 @@ RubySystem::RubySystem(const Params &p)
       m_cache_recorder(NULL)
 {
     m_randomization = p.randomization;
+    m_tcc_select_hash = p.tcc_select_hash;
 
     m_block_size_bytes = p.block_size_bytes;
     assert(isPowerOf2(m_block_size_bytes));

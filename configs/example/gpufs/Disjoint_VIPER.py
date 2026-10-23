@@ -61,6 +61,11 @@ class Disjoint_VIPER(RubySystem):
 
         self.block_size_bytes = options.cacheline_size
 
+        # Hash the TCC (L2 channel) selection over all upper address bits.
+        self.tcc_select_hash = getattr(
+            options, "gpu_l2_hash", False
+        ) and not getattr(options, "baseline_l2", False)
+
         # Construct CPU controllers
         cpu_dir_nodes = construct_dirs(options, system, self, self.network_cpu)
         cp_sequencers, cp_cntrl_nodes = construct_corepairs(

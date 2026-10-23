@@ -496,6 +496,10 @@ class AbstractController : public ClockedObject, public Consumer
     NetDest mapAddressToRangeAcrossClusters(
         Addr addr, MachineType type, int low_bit, int num_bits,
         int num_clusters);
+    // Hides the free mapAddressToRange() for the generated controllers so
+    // that every TCC lookup honours RubySystem::tcc_select_hash.
+    MachineID mapAddressToRange(Addr addr, MachineType type, int low_bit,
+                                int num_bits, int cluster_id = 0) const;
     int machineCount(MachineType machType);
 
   private:

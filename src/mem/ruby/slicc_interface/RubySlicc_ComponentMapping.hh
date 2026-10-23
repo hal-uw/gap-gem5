@@ -40,6 +40,19 @@ namespace gem5
 namespace ruby
 {
 
+// XOR-fold every address bit at and above low_bit, num_bits at a time.
+// Unlike a plain bit select, strides that are multiples of the interleave
+// size still spread across all of the 1 << num_bits targets.
+inline int
+hashSelect(Addr addr, int low_bit, int num_bits)
+{
+    const Addr mask = (Addr(1) << num_bits) - 1;
+    Addr sel = 0;
+    for (Addr x = addr >> low_bit; x != 0; x >>= num_bits)
+        sel ^= x & mask;
+    return sel;
+}
+
 inline MachineID
 mapAddressToRange(Addr addr, MachineType type, int low_bit,
                   int num_bits, int cluster_id = 0)

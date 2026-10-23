@@ -323,6 +323,25 @@ def addAmdGPUOptions(parser):
     )
 
     parser.add_argument(
+        "--gpu-l2-hash",
+        action="store_true",
+        default=False,
+        help="Select the L2 channel (TCC) by XOR-folding all address bits "
+        "above the line offset instead of using the low select bits alone, "
+        "so power-of-two strides do not camp on one channel (ignored with "
+        "--baseline-l2)",
+    )
+
+    parser.add_argument(
+        "--gpu-mem-hash",
+        action="store_true",
+        default=False,
+        help="Select the GPU directory/HBM channel by XOR-folding all "
+        "address bits above the interleave field (ignored with "
+        "--baseline-memory)",
+    )
+
+    parser.add_argument(
         "--baseline-memory",
         action="store_true",
         default=False,

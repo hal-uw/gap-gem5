@@ -820,6 +820,25 @@ def construct_dirs(options, system, ruby_system, network):
     return dir_cntrl_nodes
 
 
+def _xor_fold_range(rng):
+    """Return rng with each interleave bit XOR-folded with every
+    len(masks)-th address bit above it, so that power-of-two strides
+    spread across all channels instead of camping on one."""
+    num_bits = len(rng.masks)
+    addr_bits = int(rng.end).bit_length()
+    masks = []
+    for m in rng.masks:
+        mask = 0
+        bit = m.bit_length() - 1
+        while bit < addr_bits:
+            mask |= 1 << bit
+            bit += num_bits
+        masks.append(mask)
+    return m5.objects.AddrRange(
+        rng.start, end=rng.end, masks=masks, intlvMatch=rng.intlvMatch
+    )
+
+
 def construct_gpudirs(options, system, ruby_system, network):
     dir_cntrl_nodes = []
     mem_ctrls = []
@@ -910,6 +929,9 @@ def construct_gpudirs(options, system, ruby_system, network):
         else:
             mem_type = ObjectList.mem_list.get(options.dgpu_mem_type)
         hbm_ctrl = options.hbm_ctrl and not baseline_memory
+        mem_hash = (
+            getattr(options, "gpu_mem_hash", False) and not baseline_memory
+        )
 
         if hbm_ctrl:
             # If HBM controller is enabled,
@@ -934,6 +956,9 @@ def construct_gpudirs(options, system, ruby_system, network):
             dram_intf.write_buffer_size = 128
             dram_intf_2.read_buffer_size = 128
             dram_intf_2.write_buffer_size = 128
+            if mem_hash:
+                dram_intf.range = _xor_fold_range(dram_intf.range)
+                dram_intf_2.range = _xor_fold_range(dram_intf_2.range)
         else:
             dram_intf = MemConfig.create_mem_intf(
                 mem_type,
@@ -943,6 +968,8 @@ def construct_gpudirs(options, system, ruby_system, network):
                 options.cacheline_size * options.dgpu_mem_locality,
                 xor_low_bit,
             )
+            if mem_hash:
+                dram_intf.range = _xor_fold_range(dram_intf.range)
             if not baseline_memory:
                 dram_intf = m5.objects.SimpleMemory(
                     range=dram_intf.range,
@@ -973,20 +1000,16 @@ def construct_gpudirs(options, system, ruby_system, network):
 
         # The interleave bits that select this directory are the same for
         # every line it holds, so index its L3 above them; otherwise only a
-        # fraction of the L3 sets are reachable. With XOR hashing no single
-        # bit is fixed per directory, which this does not handle.
+        # fraction of the L3 sets are reachable. With XOR hashing only each
+        # mask's lowest bit is consumed by the selection; the higher bits
+        # it folds in still vary within a directory.
         if hbm_ctrl:
             intlv_masks = dram_intf.range.masks + dram_intf_2.range.masks
         else:
             intlv_masks = dram_intf.range.masks
-        if any(bin(m).count("1") > 1 for m in intlv_masks):
-            m5.util.fatal(
-                "GPU directory L3 indexing does not support XOR-hashed "
-                "directory interleaving"
-            )
         if intlv_masks:
             dir_cntrl.L3CacheMemory.start_index_bit = max(
-                m.bit_length() for m in intlv_masks
+                (m & -m).bit_length() for m in intlv_masks
             )
 
         # Append
@@ -1278,6 +1301,11 @@ def create_system(
         panic("This script requires the GPU_VIPER protocol to be built.")
 
     _get_xcd_layout(options)
+
+    # Hash the TCC (L2 channel) selection over all upper address bits.
+    ruby_system.tcc_select_hash = getattr(
+        options, "gpu_l2_hash", False
+    ) and not getattr(options, "baseline_l2", False)
 
     cpu_sequencers = []
 
