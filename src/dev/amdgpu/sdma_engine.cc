@@ -203,6 +203,7 @@ SDMAEngine::registerRLCQueue(Addr doorbell, Addr mqdAddr, SDMAQueueDesc *mqd,
         DPRINTF(SDMAEngine, "Doorbell %lx mapped to RLC0\n", doorbell);
         rlcInfo[0] = doorbell;
         rlc0.valid(true);
+        rlc0.vmid(1);
         rlc0.base(mqd->rb_base << 8);
         rlc0.size(rlc_size);
         rlc0.rptr(0);
@@ -218,6 +219,7 @@ SDMAEngine::registerRLCQueue(Addr doorbell, Addr mqdAddr, SDMAQueueDesc *mqd,
         DPRINTF(SDMAEngine, "Doorbell %lx mapped to RLC1\n", doorbell);
         rlcInfo[1] = doorbell;
         rlc1.valid(true);
+        rlc1.vmid(1);
         rlc1.base(mqd->rb_base << 8);
         rlc1.size(rlc_size);
         rlc1.rptr(0);
@@ -253,6 +255,8 @@ SDMAEngine::unregisterRLCQueue(Addr doorbell, bool unmap_static)
             mqd->wptr = rlc0.getWptr();
 
             auto cb = new DmaVirtCallback<uint32_t>([](const uint32_t &) {});
+            // The MQD is in the driver's (kernel) address space.
+            cur_vmid = 0;
             dmaWriteVirt(rlc0.getMQDAddr(), sizeof(SDMAQueueDesc), cb, mqd);
         } else {
             warn("RLC0 SDMAMQD address invalid\n");
@@ -274,6 +278,8 @@ SDMAEngine::unregisterRLCQueue(Addr doorbell, bool unmap_static)
             mqd->wptr = rlc1.getWptr();
 
             auto cb = new DmaVirtCallback<uint32_t>([](const uint32_t &) {});
+            // The MQD is in the driver's (kernel) address space.
+            cur_vmid = 0;
             dmaWriteVirt(rlc1.getMQDAddr(), sizeof(SDMAQueueDesc), cb, mqd);
         } else {
             warn("RLC1 SDMAMQD address invalid\n");
@@ -340,7 +346,6 @@ SDMAEngine::processRLC0(Addr wptrOffset)
 
     rlc0.setWptr(wptrOffset);
     if (!rlc0.processing()) {
-        cur_vmid = 1;
         rlc0.processing(true);
         decodeNext(&rlc0);
     }
@@ -354,7 +359,6 @@ SDMAEngine::processRLC1(Addr wptrOffset)
 
     rlc1.setWptr(wptrOffset);
     if (!rlc1.processing()) {
-        cur_vmid = 1;
         rlc1.processing(true);
         decodeNext(&rlc1);
     }
@@ -364,6 +368,7 @@ SDMAEngine::processRLC1(Addr wptrOffset)
 void
 SDMAEngine::decodeNext(SDMAQueue *q)
 {
+    useQueueVmid(q);
     DPRINTF(SDMAEngine, "SDMA decode rptr %p wptr %p\n", q->rptr(), q->wptr());
 
     if (q->rptr() != q->wptr()) {
@@ -390,12 +395,8 @@ SDMAEngine::decodeNext(SDMAQueue *q)
         q->processing(false);
         if (q->parent()) {
             DPRINTF(SDMAEngine, "SDMA switching queues\n");
-            // If current vmid is non-zero, set it back to 0 before
-            // switching back to parent
-            cur_vmid = 0;
             decodeNext(q->parent());
         }
-        cur_vmid = 0;
     }
 }
 
@@ -403,6 +404,7 @@ SDMAEngine::decodeNext(SDMAQueue *q)
 void
 SDMAEngine::decodeHeader(SDMAQueue *q, uint32_t header)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(header));
     int opcode = bits(header, 7, 0);
     int sub_opcode = bits(header, 15, 8);
@@ -636,6 +638,7 @@ SDMAEngine::decodeHeader(SDMAQueue *q, uint32_t header)
 void
 SDMAEngine::write(SDMAQueue *q, sdmaWrite *pkt)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaWrite));
     // count represents the number of dwords - 1 to write
     pkt->count++;
@@ -653,6 +656,7 @@ SDMAEngine::write(SDMAQueue *q, sdmaWrite *pkt)
 void
 SDMAEngine::writeReadData(SDMAQueue *q, sdmaWrite *pkt, uint32_t *dmaBuffer)
 {
+    useQueueVmid(q);
     int bufferSize = sizeof(uint32_t) * pkt->count;
     q->incRptr(bufferSize);
 
@@ -661,21 +665,39 @@ SDMAEngine::writeReadData(SDMAQueue *q, sdmaWrite *pkt, uint32_t *dmaBuffer)
         DPRINTF(SDMAEngine, "%08x\n", dmaBuffer[i]);
     }
 
-    // lastly we write read data to the destination address
-    if (gpuDevice->getVM().inMMHUB(pkt->dest)) {
-        Addr mmhub_addr = pkt->dest - gpuDevice->getVM().getMMHUBBase();
+    // Supervisor writes outside the MMHUB aperture go through the GART.
+    if (q->priv() && cur_vmid == 0 &&
+        !gpuDevice->getVM().inMMHUB(pkt->dest)) {
+        pkt->dest = getGARTAddr(pkt->dest);
+    }
 
-        fatal_if(gpuDevice->getVM().inGARTRange(mmhub_addr),
+    // lastly we write read data to the destination address. User-queue
+    // (vmid > 0) destinations are GPU virtual addresses that may translate
+    // to device memory. The SDMA DMA port only reaches host memory, so
+    // device memory must be written through the memory manager, a page at
+    // a time, as in copy() and constFill().
+    Addr device_addr = getDeviceAddress(pkt->dest);
+    if (device_addr) {
+        fatal_if(gpuDevice->getVM().inGARTRange(device_addr),
                  "SDMA write to GART not implemented");
 
+        DPRINTF(SDMAEngine, "Write %d bytes to device address %#lx\n",
+                bufferSize, device_addr);
         auto cb = new EventFunctionWrapper(
             [=, this] { writeDone(q, pkt, dmaBuffer); }, name());
-        gpuDevice->getMemMgr()->writeRequest(mmhub_addr, (uint8_t *)dmaBuffer,
-                                             bufferSize, 0, cb);
-    } else {
-        if (q->priv() && cur_vmid == 0) {
-            pkt->dest = getGARTAddr(pkt->dest);
+        ChunkGenerator gen(pkt->dest, bufferSize, AMDGPU_MMHUB_PAGE_SIZE);
+        uint8_t *buffer_ptr = (uint8_t *)dmaBuffer;
+        for (; !gen.done(); gen.next()) {
+            Addr chunk_addr = getDeviceAddress(gen.addr());
+            assert(chunk_addr);
+            gpuDevice->getMemMgr()->writeRequest(chunk_addr, buffer_ptr,
+                                                 gen.size(), 0,
+                                                 gen.last() ? cb : nullptr);
+            buffer_ptr += gen.size();
         }
+    } else {
+        DPRINTF(SDMAEngine, "Write %d bytes to host address %#lx\n",
+                bufferSize, pkt->dest);
         auto cb = new DmaVirtCallback<uint32_t>(
             [=, this](const uint64_t &) { writeDone(q, pkt, dmaBuffer); });
         dmaWriteVirt(pkt->dest, bufferSize, cb, (void *)dmaBuffer);
@@ -715,6 +737,7 @@ SDMAEngine::writeCleanup(uint32_t *dmaBuffer)
 void
 SDMAEngine::copy(SDMAQueue *q, sdmaCopy *pkt)
 {
+    useQueueVmid(q);
     DPRINTF(SDMAEngine, "Copy src: %lx -> dest: %lx count %d\n", pkt->source,
             pkt->dest, pkt->count);
     q->incRptr(sizeof(sdmaCopy));
@@ -765,6 +788,7 @@ SDMAEngine::copy(SDMAQueue *q, sdmaCopy *pkt)
 void
 SDMAEngine::copyReadData(SDMAQueue *q, sdmaCopy *pkt, uint8_t *dmaBuffer)
 {
+    useQueueVmid(q);
     // lastly we write read data to the destination address
     uint64_t *dmaBuffer64 = reinterpret_cast<uint64_t *>(dmaBuffer);
 
@@ -857,7 +881,8 @@ void
 SDMAEngine::indirectBuffer(SDMAQueue *q, sdmaIndirectBuffer *pkt,
                            uint32_t header)
 {
-    cur_vmid = (header >> 16) & 0xF;
+    q->ib()->vmid((header >> 16) & 0xF);
+    useQueueVmid(q->ib());
     if (q->priv() && cur_vmid == 0) {
         q->ib()->base(getGARTAddr(pkt->base));
     } else {
@@ -877,6 +902,7 @@ SDMAEngine::indirectBuffer(SDMAQueue *q, sdmaIndirectBuffer *pkt,
 void
 SDMAEngine::fence(SDMAQueue *q, sdmaFence *pkt)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaFence));
     if (q->priv() && cur_vmid == 0) {
         pkt->dest = getGARTAddr(pkt->dest);
@@ -902,6 +928,7 @@ SDMAEngine::fenceDone(SDMAQueue *q, sdmaFence *pkt)
 void
 SDMAEngine::trap(SDMAQueue *q, sdmaTrap *pkt)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaTrap));
 
     DPRINTF(SDMAEngine, "Trap contextId: %p\n", pkt->intrContext);
@@ -941,6 +968,7 @@ SDMAEngine::trap(SDMAQueue *q, sdmaTrap *pkt)
 void
 SDMAEngine::srbmWrite(SDMAQueue *q, uint32_t header, sdmaSRBMWrite *pkt)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaSRBMWrite));
 
     sdmaSRBMWriteHeader srbm_header;
@@ -980,6 +1008,7 @@ SDMAEngine::srbmWrite(SDMAQueue *q, uint32_t header, sdmaSRBMWrite *pkt)
 void
 SDMAEngine::pollRegMem(SDMAQueue *q, uint32_t header, sdmaPollRegMem *pkt)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaPollRegMem));
 
     sdmaPollRegMemHeader prm_header;
@@ -1026,6 +1055,7 @@ void
 SDMAEngine::pollRegMemRead(SDMAQueue *q, uint32_t header, sdmaPollRegMem *pkt,
                            uint32_t dma_buffer, int count)
 {
+    useQueueVmid(q);
     sdmaPollRegMemHeader prm_header;
     prm_header.ordinal = header;
 
@@ -1090,6 +1120,7 @@ SDMAEngine::pollRegMemFunc(uint32_t value, uint32_t reference, uint32_t func)
 void
 SDMAEngine::ptePde(SDMAQueue *q, sdmaPtePde *pkt)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaPtePde));
     pkt->count++;
 
@@ -1103,22 +1134,31 @@ SDMAEngine::ptePde(SDMAQueue *q, sdmaPtePde *pkt)
         dmaBuffer[i] = (pkt->mask | (pkt->initValue + (i * pkt->increment)));
     }
 
-    // Writing generated data to the destination address.
-    if (gpuDevice->getVM().inMMHUB(pkt->dest)) {
-        Addr mmhub_addr = pkt->dest - gpuDevice->getVM().getMMHUBBase();
-
-        fatal_if(gpuDevice->getVM().inGARTRange(mmhub_addr),
+    // Writing generated data to the destination address. As in
+    // writeReadData(), device memory must go through the memory manager.
+    if (q->priv() && cur_vmid == 0 &&
+        !gpuDevice->getVM().inMMHUB(pkt->dest)) {
+        pkt->dest = getGARTAddr(pkt->dest);
+    }
+    int ptepde_bytes = sizeof(uint64_t) * pkt->count;
+    Addr device_addr = getDeviceAddress(pkt->dest);
+    if (device_addr) {
+        fatal_if(gpuDevice->getVM().inGARTRange(device_addr),
                  "SDMA write to GART not implemented");
 
         auto cb = new EventFunctionWrapper(
             [=, this] { ptePdeDone(q, pkt, dmaBuffer); }, name());
-        gpuDevice->getMemMgr()->writeRequest(mmhub_addr, (uint8_t *)dmaBuffer,
-                                             sizeof(uint64_t) * pkt->count, 0,
-                                             cb);
-    } else {
-        if (q->priv() && cur_vmid == 0) {
-            pkt->dest = getGARTAddr(pkt->dest);
+        ChunkGenerator gen(pkt->dest, ptepde_bytes, AMDGPU_MMHUB_PAGE_SIZE);
+        uint8_t *buffer_ptr = (uint8_t *)dmaBuffer;
+        for (; !gen.done(); gen.next()) {
+            Addr chunk_addr = getDeviceAddress(gen.addr());
+            assert(chunk_addr);
+            gpuDevice->getMemMgr()->writeRequest(chunk_addr, buffer_ptr,
+                                                 gen.size(), 0,
+                                                 gen.last() ? cb : nullptr);
+            buffer_ptr += gen.size();
         }
+    } else {
         auto cb = new DmaVirtCallback<uint64_t>(
             [=, this](const uint64_t &) { ptePdeDone(q, pkt, dmaBuffer); });
         dmaWriteVirt(pkt->dest, sizeof(uint64_t) * pkt->count, cb,
@@ -1158,6 +1198,7 @@ SDMAEngine::ptePdeCleanup(uint64_t *dmaBuffer)
 void
 SDMAEngine::atomic(SDMAQueue *q, uint32_t header, sdmaAtomic *pkt)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaAtomic));
 
     sdmaAtomicHeader at_header;
@@ -1182,6 +1223,7 @@ void
 SDMAEngine::atomicData(SDMAQueue *q, uint32_t header, sdmaAtomic *pkt,
                        uint64_t *dmaBuffer)
 {
+    useQueueVmid(q);
     sdmaAtomicHeader at_header;
     at_header.ordinal = header;
 
@@ -1226,6 +1268,7 @@ SDMAEngine::atomicDone(SDMAQueue *q, uint32_t header, sdmaAtomic *pkt,
 void
 SDMAEngine::constFill(SDMAQueue *q, sdmaConstFill *pkt, uint32_t header)
 {
+    useQueueVmid(q);
     q->incRptr(sizeof(sdmaConstFill));
 
     sdmaConstFillHeader fill_header;

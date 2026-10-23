@@ -69,6 +69,10 @@ class SDMAEngine : public DmaVirtDevice
         SDMAQueueDesc *_mqd;
         Addr _mqd_addr = 0;
         bool _priv = true; // Only used for RLC queues. True otherwise.
+        // Address space (VMID) of this queue's DMAs: 0 for the kernel
+        // (gfx/page) rings, the user VMID for RLC queues, and the VMID in
+        // the packet header for an indirect buffer.
+        int _vmid = 0;
         bool _static = false;
 
       public:
@@ -133,6 +137,18 @@ class SDMAEngine : public DmaVirtDevice
         {
             return _processing;
         }
+        int
+        vmid() const
+        {
+            return _vmid;
+        }
+
+        void
+        vmid(int v)
+        {
+            _vmid = v;
+        }
+
         SDMAQueue *
         parent()
         {
@@ -520,6 +536,11 @@ class SDMAEngine : public DmaVirtDevice
     void deallocateRLCQueues(bool unmap_static);
 
     int cur_vmid = 0;
+
+    // Translate the next DMAs in q's address space. Queues are serviced
+    // interleaved (their DMA callbacks run in any order), so this is set
+    // before every DMA issued for a queue rather than once per queue.
+    void useQueueVmid(SDMAQueue *q) { cur_vmid = q->vmid(); }
 };
 
 } // namespace gem5
