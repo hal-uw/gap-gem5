@@ -166,8 +166,8 @@ machine(MachineType:SQC, "GPU SQC (L1 I Cache)")
             testAndWrite(addr, cache_entry.DataBlk, pkt);
     }
 
-    num_functional_writes := num_functional_writes +
-        functionalMemoryWrite(pkt);
+    // Memory is updated by the directory, which owns the memory port; this
+    // controller's memory port is not connected.
     return num_functional_writes;
   }
 

@@ -668,6 +668,12 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         CacheEntry entry := static_cast(CacheEntry, "pointer", L3CacheMemory.lookup(address));
         if (tbe.Dirty == false) {
           tbe.DataBlk := entry.DataBlk;
+        } else if (tbe.wtData) {
+          // Partial write-through: take the unwritten bytes from the L3
+          // copy, as mt_writeMemDataToTBE does with memory data.
+          DataBlock tmpBlk := entry.DataBlk;
+          tmpBlk.copyPartial(tbe.DataBlk, tbe.writeMask);
+          tbe.DataBlk := tmpBlk;
         }
         tbe.LastSender := entry.LastSender;
         tbe.L3Hit := true;

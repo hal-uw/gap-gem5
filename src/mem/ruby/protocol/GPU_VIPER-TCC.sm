@@ -195,13 +195,17 @@ machine(MachineType:TCC, "TCC Cache")
   int functionalWrite(Addr addr, Packet *pkt) {
     int num_functional_writes := 0;
     TBE tbe := TBEs.lookup(addr);
+    Entry cache_entry := getCacheEntry(addr);
     if(is_valid(tbe)) {
       num_functional_writes := num_functional_writes +
             testAndWrite(addr, tbe.DataBlk, pkt);
+    } else if (is_valid(cache_entry)) {
+      num_functional_writes := num_functional_writes +
+            testAndWrite(addr, cache_entry.DataBlk, pkt);
     }
 
-    num_functional_writes := num_functional_writes +
-        functionalMemoryWrite(pkt);
+    // Memory is updated by the directory, which owns the memory port; this
+    // controller's memory port is not connected.
     return num_functional_writes;
   }
 
@@ -476,6 +480,42 @@ machine(MachineType:TCC, "TCC Cache")
   }
 
 
+  action(sdm_sendMergedDataResponse, "sdm", desc="send response, dirty bytes from TCC") {
+    enqueue(responseToCore_out, ResponseMsg, l2_response_latency) {
+      out_msg.addr := address;
+      out_msg.Type := CoherenceResponseType:TDSysResp;
+      out_msg.Sender := machineID;
+      out_msg.MessageSize := MessageSizeType:Response_Data;
+      out_msg.Dirty := false;
+      out_msg.State := CoherenceState:Shared;
+      peek(responseFromNB_in, ResponseMsg) {
+        // The line may already have been invalidated (evicted while being
+        // written back), so start from the returned data and overlay any
+        // dirty bytes the TCC still holds.
+        out_msg.DataBlk := in_msg.DataBlk;
+        if (is_valid(cache_entry)) {
+          out_msg.DataBlk.copyPartial(cache_entry.DataBlk,
+                                      cache_entry.writeMask);
+        }
+        out_msg.isGLCSet := in_msg.isGLCSet;
+        out_msg.isSLCSet := in_msg.isSLCSet;
+        out_msg.Destination.clear();
+        out_msg.Destination.add(in_msg.CURequestor);
+      }
+      DPRINTF(RubySlicc, "%s\n", out_msg);
+    }
+    enqueue(unblockToNB_out, UnblockMsg, 1) {
+      out_msg.addr := address;
+      out_msg.Destination.add(mapAddressToMachine(address, MachineType:Directory));
+      out_msg.MessageSize := MessageSizeType:Unblock_Control;
+      peek(responseFromNB_in, ResponseMsg) {
+        out_msg.isGLCSet := in_msg.isGLCSet;
+        out_msg.isSLCSet := in_msg.isSLCSet;
+      }
+      DPRINTF(RubySlicc, "%s\n", out_msg);
+    }
+  }
+
   action(sdr_sendDataResponse, "sdr", desc="send Shared response") {
     enqueue(responseToCore_out, ResponseMsg, l2_response_latency) {
       out_msg.addr := address;
@@ -744,6 +784,16 @@ machine(MachineType:TCC, "TCC Cache")
       cache_entry.DataBlk.copyPartial(in_msg.DataBlk,in_msg.writeMask);
       cache_entry.writeMask.orMask(in_msg.writeMask);
       DPRINTF(RubySlicc, "Writing to TCC: %s\n", in_msg);
+    }
+  }
+
+  action(wmb_writeMissingBytes, "wmb", desc="fill unwritten bytes from response") {
+    peek(responseFromNB_in, ResponseMsg) {
+      // Start from the returned data and overlay the dirty bytes.
+      DataBlock merged := in_msg.DataBlk;
+      merged.copyPartial(cache_entry.DataBlk, cache_entry.writeMask);
+      cache_entry.DataBlk := merged;
+      DPRINTF(RubySlicc, "Filling unwritten TCC bytes: %s\n", in_msg);
     }
   }
 
@@ -1303,6 +1353,15 @@ machine(MachineType:TCC, "TCC Cache")
     dt_deallocateTBE;
   }
 
+  // An SLC read's response can arrive after a normal read to the same line
+  // allocated it; forward the data to the requester without changing the
+  // line. TBEs are reference-counted, so the other read's TBE stays.
+  transition({IV, V, M, W}, Bypass) {
+    rb_bypassDone;
+    pr_popResponseQueue;
+    dt_deallocateTBE;
+  }
+
   transition(A, Bypass) {TagArrayRead, TagArrayWrite} {
     bapdr_sendBypassedAtomicPerformedInDirectoryResponse;
     dnpa_decrementNumPendingDirectoryAtomics;
@@ -1341,6 +1400,36 @@ machine(MachineType:TCC, "TCC Cache")
   }
 
   /*
+    As above, but a write-back to the line (WB_L2) made it dirty before this
+    load's data returned. The line holds newer data than memory, so don't
+    overwrite it; respond with the cache data (sdr uses the cache entry when
+    the line is valid).
+   */
+  transition(M, Data) {TagArrayRead} {
+    ut_updateTag;
+    sdr_sendDataResponse;
+    wada_wakeUpAllDependentsAddr;
+    // tracks # pending requests, so need to decrement here too
+    dt_deallocateTBE;
+    pr_popResponseQueue;
+  }
+
+  /*
+    As above, but the line is only partially written (W). Fill the bytes that
+    weren't written from the returned data, keeping the dirty bytes, so the
+    whole line is valid and dirty (M), then respond with it.
+   */
+  transition(W, Data, M) {TagArrayRead, TagArrayWrite, DataArrayWrite} {
+    ut_updateTag;
+    wmb_writeMissingBytes;
+    sdr_sendDataResponse;
+    wada_wakeUpAllDependentsAddr;
+    // tracks # pending requests, so need to decrement here too
+    dt_deallocateTBE;
+    pr_popResponseQueue;
+  }
+
+  /*
     Since the L2 now allows multiple loads from different CUs to proceed in
     parallel to the directory, we may get Event:Data back when the line is
     now in I because it has been evicted by an intervening request to the same
@@ -1348,6 +1437,20 @@ machine(MachineType:TCC, "TCC Cache")
     affecting the TCC (essentially, treat it similar to a bypass request except
     we also send the unblock back to the directory).
    */
+  /*
+    As above, but the line went dirty and is now being written back (WI) or
+    written back for a bypassing read (WIB); it may already be invalidated.
+    Respond with the returned data plus any dirty bytes still in the TCC, and
+    keep waiting for the WBAck (its own pending count keeps the TBE alive).
+   */
+  transition({WI, WIB}, Data) {
+    sdm_sendMergedDataResponse;
+    wada_wakeUpAllDependentsAddr;
+    // tracks # pending requests, so need to decrement here too
+    dt_deallocateTBE;
+    pr_popResponseQueue;
+  }
+
   transition(I, Data) {
     sdr_sendDataResponse;
     wada_wakeUpAllDependentsAddr;
@@ -1392,6 +1495,8 @@ machine(MachineType:TCC, "TCC Cache")
 
   transition(WIB, WBAck,I) {
     pr_popResponseQueue;
+    // Requests stalled while in WIB can proceed now that the line is I.
+    wada_wakeUpAllDependentsAddr;
   }
 
   transition({A, IV, WI, WIB}, Flush) {

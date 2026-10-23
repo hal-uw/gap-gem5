@@ -128,7 +128,7 @@ def addRunFSOptions(parser):
         type=int,
         default=1,
         help="Interleaving granularity (in cache lines) per dGPU directory; "
-             "1 stripes memory across directories at cache-line granularity",
+        "1 stripes memory across directories at cache-line granularity",
     )
     parser.add_argument(
         "--dgpu-mem-type",
