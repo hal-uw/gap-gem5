@@ -307,7 +307,7 @@ def runGpuFSSystem(args):
             assert args.checkpoint_dir is not None
             m5.checkpoint(args.checkpoint_dir)
             break
-        elif "gpu_kernel_started" in exit_event.getCause():
+        elif "GPU Kernel Started" in exit_event.getCause():
             m5.stats.reset()
         elif "GPU Kernel Completed" in exit_event.getCause():
             if kernels_completed == args.exit_after_gpu_kernel:
@@ -316,8 +316,10 @@ def runGpuFSSystem(args):
             kernels_completed += 1
             tasks_completed += 1
             m5.stats.dump()
+            m5.stats.reset()
         elif "GPU Blit Kernel Completed" in exit_event.getCause():
             tasks_completed += 1
+            m5.stats.dump()
             m5.stats.reset()
         elif "Skipping GPU Kernel" in exit_event.getCause():
             print(f"Skipping GPU kernel {kernels_completed}")
