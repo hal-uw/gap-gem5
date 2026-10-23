@@ -586,6 +586,27 @@ AMDGPUDevice::writeFrame(PacketPtr pkt, Addr offset)
     // happen with one address that is not important, therefore warn only.
     if (system->getDeviceMemory(writePkt)) {
         system->getDeviceMemory(writePkt)->access(writePkt);
+
+        // The write above goes straight to the backing store. L2 copies are
+        // invalidated above, but the directory L3 can hold clean copies
+        // filled by GPU reads, so also write through Ruby functionally to
+        // update every cached copy. Ruby functional accesses must stay
+        // within one cache line.
+        Addr line_mask = ~(Addr(gpuMemMgr->getCacheLineSize()) - 1);
+        if ((offset & line_mask) ==
+            ((offset + pkt->getSize() - 1) & line_mask)) {
+            RequestPtr ruby_req = std::make_shared<Request>(
+                offset, pkt->getSize(), 0, vramRequestorId());
+            PacketPtr ruby_pkt = Packet::createWrite(ruby_req);
+            ruby_pkt->dataStatic(pkt->getPtr<uint8_t>());
+            ruby_pkt->req->setGPUFuncAccess(true);
+            ruby_pkt->setSuppressFuncError();
+            cp->shader()->cuList[0]->memPort[0].sendFunctional(ruby_pkt);
+            delete ruby_pkt;
+        } else {
+            warn_once("Framebuffer write at %#lx crosses a cache line; "
+                      "cached copies are not updated\n", offset);
+        }
     } else {
         warn("Unable to find device memory for address %#lx\n", offset);
     }

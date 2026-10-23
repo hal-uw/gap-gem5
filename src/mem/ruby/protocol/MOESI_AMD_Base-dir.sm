@@ -40,6 +40,10 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   int TCC_select_num_bits;
   int num_xcds := 1;
   bool useL3OnWT := "False";
+  // Infinity Cache (memory-side L3) behaviour: fill the L3 with clean data
+  // returned to reads, and keep a line in the L3 when a read hits it.
+  bool l3AllocOnRead := "False";
+  bool l3KeepOnReadHit := "False";
   bool L2isWB;
   Cycles to_memory_controller_latency := 1;
 
@@ -178,6 +182,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     bool isGLCSet,      desc="Bypass GPU L1 Cache";
     bool isSLCSet,      desc="Bypass GPU L1 and L2 Cache";
     bool isNTSet,       desc="Non-temporal GPU access";
+    bool l3ReadFill, default="false", desc="Read that may fill the L3";
   }
 
   structure(TBETable, external="yes") {
@@ -237,6 +242,14 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     if(is_valid(tbe)) {
       num_functional_writes := num_functional_writes +
             testAndWrite(addr, tbe.DataBlk, pkt);
+    }
+
+    // The L3 holds clean copies of memory, so keep any copy up to date
+    CacheEntry entry := static_cast(CacheEntry, "pointer",
+                                    L3CacheMemory.lookup(addr));
+    if (is_valid(entry)) {
+      num_functional_writes := num_functional_writes +
+            testAndWrite(addr, entry.DataBlk, pkt);
     }
 
     num_functional_writes := num_functional_writes
@@ -678,7 +691,15 @@ machine(MachineType:Directory, "AMD Baseline protocol")
         tbe.LastSender := entry.LastSender;
         tbe.L3Hit := true;
         tbe.MemData := true;
-        L3CacheMemory.deallocate(address);
+        // Requests that may write the line (write-throughs, atomics and
+        // RdBlkM) always take it out of the L3 so it cannot go stale.
+        if (l3KeepOnReadHit &&
+            (in_msg.Type == CoherenceRequestType:RdBlk ||
+             in_msg.Type == CoherenceRequestType:RdBlkS)) {
+          L3CacheMemory.setMRU(address);
+        } else {
+          L3CacheMemory.deallocate(address);
+        }
       } else {
         enqueue(memQueue_out, MemoryMsg, to_memory_controller_latency) {
           out_msg.addr := address;
@@ -1094,6 +1115,10 @@ machine(MachineType:Directory, "AMD Baseline protocol")
       tbe.isGLCSet := in_msg.isGLCSet;
       tbe.isSLCSet := in_msg.isSLCSet;
       tbe.isNTSet := in_msg.isNTSet;
+      // Non-temporal reads do not allocate in the L3
+      tbe.l3ReadFill := l3AllocOnRead && (in_msg.isNTSet == false) &&
+                        (in_msg.Type == CoherenceRequestType:RdBlk ||
+                         in_msg.Type == CoherenceRequestType:RdBlkS);
       DPRINTF(RubySlicc, "t_allocateTBE in_msg: %s, tbe: %s\n", in_msg, tbe.CURequestor);
     }
   }
@@ -1104,7 +1129,12 @@ machine(MachineType:Directory, "AMD Baseline protocol")
   }
 
   action(wd_writeBackData, "wd", desc="Write back data if needed") {
-    if (tbe.wtData || tbe.atomicData || tbe.Dirty == false) {
+    // Only write memory when the block was modified: write-through or DMA
+    // write data, an atomic, or dirty data from a probe response (all set
+    // tbe.Dirty or wtData/atomicData). Clean data came from memory or the
+    // (always clean) L3, so writing it back only adds a memory write per
+    // read.
+    if (tbe.wtData || tbe.atomicData || tbe.Dirty) {
       // Only perform atomics in the directory if the SLC bit is set, or
       // if the L2 is WT
       if (tbe.atomicData && (tbe.isSLCSet || !L2isWB)) {
@@ -1287,6 +1317,35 @@ machine(MachineType:Directory, "AMD Baseline protocol")
 
   action(dl_deallocateL3, "dl", desc="deallocate the L3 block") {
     L3CacheMemory.deallocate(address);
+  }
+
+  action(il3_invalidateL3, "il3", desc="invalidate the L3 block if present") {
+    if (L3CacheMemory.isTagPresent(address)) {
+      L3CacheMemory.deallocate(address);
+    }
+  }
+
+  action(alr_allocateL3BlockOnRead, "alr", desc="allocate the L3 block on a read") {
+    // Fill only with data that matches memory (not dirty probe data) and
+    // only on an L3 miss; a read hit keeps its line when l3KeepOnReadHit.
+    if (tbe.l3ReadFill && tbe.Dirty == false && tbe.L3Hit == false) {
+      if (L3CacheMemory.isTagPresent(address)) {
+        CacheEntry entry := static_cast(CacheEntry, "pointer", L3CacheMemory.lookup(address));
+        entry.DataBlk := tbe.DataBlk;
+      } else {
+        if (L3CacheMemory.cacheAvail(address) == false) {
+          // Every path that allocates in the L3 also writes the data to
+          // memory, so L3 lines are clean and a victim can be dropped.
+          Addr victim := L3CacheMemory.cacheProbe(address);
+          L3CacheMemory.deallocate(victim);
+        }
+        assert(L3CacheMemory.cacheAvail(address));
+        CacheEntry entry := static_cast(CacheEntry, "pointer", L3CacheMemory.allocate(address, new CacheEntry));
+        APPEND_TRANSITION_COMMENT(" alr wrote data to L3 ");
+        entry.DataBlk := tbe.DataBlk;
+        entry.LastSender := tbe.LastSender;
+      }
+    }
   }
 
   action(pd_popDmaRequestQueue, "pd", desc="Pop DMA request queue") {
@@ -1571,6 +1630,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     wd_writeBackData;
     s_sendResponseS;
     alwt_allocateL3BlockOnWT;
+    alr_allocateL3BlockOnRead;
     dt_deallocateTBE;
     pm_popMemQueue;
   }
@@ -1589,6 +1649,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     wd_writeBackData;
     es_sendResponseES;
     alwt_allocateL3BlockOnWT;
+    alr_allocateL3BlockOnRead;
     dt_deallocateTBE;
     pm_popMemQueue;
   }
@@ -1597,6 +1658,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     wd_writeBackData;
     s_sendResponseS;
     alwt_allocateL3BlockOnWT;
+    alr_allocateL3BlockOnRead;
     dt_deallocateTBE;
     ptl_popTriggerQueue;
   }
@@ -1613,6 +1675,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     wd_writeBackData;
     es_sendResponseES;
     alwt_allocateL3BlockOnWT;
+    alr_allocateL3BlockOnRead;
     dt_deallocateTBE;
     ptl_popTriggerQueue;
   }
@@ -1733,6 +1796,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     wd_writeBackData;
     s_sendResponseS;
     alwt_allocateL3BlockOnWT;
+    alr_allocateL3BlockOnRead;
     dt_deallocateTBE;
     pt_popTriggerQueue;
   }
@@ -1751,6 +1815,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
     wd_writeBackData;
     es_sendResponseES;
     alwt_allocateL3BlockOnWT;
+    alr_allocateL3BlockOnRead;
     dt_deallocateTBE;
     pt_popTriggerQueue;
   }
@@ -1767,6 +1832,7 @@ machine(MachineType:Directory, "AMD Baseline protocol")
  transition(U, Flush, F) {L3TagArrayRead, L3TagArrayWrite} {
     t_allocateTBE;
     f_writeFlushDataToMemory;
+    il3_invalidateL3;
     w_sendResponseWBAck;
     p_popRequestQueue;
  }
