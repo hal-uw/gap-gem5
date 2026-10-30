@@ -98,6 +98,9 @@ AMDGPUVM::gartSize()
 void
 AMDGPUVM::readMMIO(PacketPtr pkt, Addr offset)
 {
+    DPRINTF(AMDGPUDevice, "readMMIO: offset=%#x value=%#x\n", offset,
+            pkt->getLE<uint32_t>());
+
     uint32_t value = pkt->getLE<uint32_t>();
 
     switch (offset) {

@@ -116,14 +116,14 @@ PM4PacketProcessor::getQueue(Addr offset, bool gfx)
 void
 PM4PacketProcessor::mapKiq(Addr offset)
 {
-    DPRINTF(PM4PacketProcessor, "Mapping KIQ\n");
+    DPRINTF(PM4PacketProcessor, "Mapping KIQ, offset = %d\n", offset);
     newQueue((QueueDesc *)&kiq, offset, &kiq_pkt);
 }
 
 void
 PM4PacketProcessor::mapPq(Addr offset)
 {
-    DPRINTF(PM4PacketProcessor, "Mapping PQ\n");
+    DPRINTF(PM4PacketProcessor, "Mapping PQ, offset = %d\n", offset);
     newQueue((QueueDesc *)&pq, offset, &pq_pkt);
 }
 
@@ -136,7 +136,10 @@ PM4PacketProcessor::newQueue(QueueDesc *mqd, Addr offset, PM4MapQueues *pkt,
     }
 
     /* 256 bytes aligned address */
-    mqd->base <<= 8;
+    // for offset 0, KIQ this is shifted when MMIO is set
+    if (offset != getKiqDoorbellOffset()) {
+        mqd->base <<= 8;
+    }
     PM4Queue *q = new PM4Queue(id, mqd, offset, pkt);
 
     queuesMap[offset] = q;
@@ -951,6 +954,9 @@ PM4PacketProcessor::setUconfigReg(PM4Queue *q, PM4SetUconfigReg *pkt)
 
     // Additional CPs respond to addresses 0x40000 apart.
     reg_addr += 0x40000 * getIpId();
+    DPRINTF(PM4PacketProcessor, "SetUconfig writing reg %#x = %#x\n", reg_addr,
+            pkt->data);
+
     gpuDevice->setRegVal(reg_addr, pkt->data);
 
     delete pkt;
@@ -1035,6 +1041,8 @@ PM4PacketProcessor::writeMMIO(PacketPtr pkt, Addr mmio_offset)
                                        getIpId());
             break;
         case mmCP_HQD_PQ_RPTR:
+            DPRINTF(PM4PacketProcessor, "PM4 mmCP_HQD_PQ_RPTR, %x\n",
+                    pkt->getLE<uint32_t>());
             setHqdPqPtr(pkt->getLE<uint32_t>());
             break;
         case mmCP_HQD_PQ_WPTR_LO:
@@ -1122,13 +1130,15 @@ PM4PacketProcessor::setHqdActive(uint32_t data)
 void
 PM4PacketProcessor::setHqdPqBase(uint32_t data)
 {
-    kiq.hqd_pq_base_lo = data;
+    DPRINTF(PM4PacketProcessor, "setHqdPqBase: data=%#x\n", data << 8);
+    kiq.hqd_pq_base_lo = data << 8;
 }
 
 void
 PM4PacketProcessor::setHqdPqBaseHi(uint32_t data)
 {
-    kiq.hqd_pq_base_hi = data;
+    DPRINTF(PM4PacketProcessor, "setHqdPqBaseHi: data=%#x\n", data << 8);
+    kiq.hqd_pq_base_hi = data << 8;
 }
 
 void
@@ -1140,6 +1150,7 @@ PM4PacketProcessor::setHqdPqDoorbellCtrl(uint32_t data)
 void
 PM4PacketProcessor::setHqdPqPtr(uint32_t data)
 {
+    DPRINTF(PM4PacketProcessor, "setHqdPqPtr: setting kiq.rptr = %#x\n", data);
     kiq.rptr = data;
 }
 

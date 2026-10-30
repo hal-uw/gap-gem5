@@ -116,6 +116,8 @@ class AMDGPUDevice;
 #define MI300X_EPF0_STRAP0 0x34d8
 #define NBIO_PARTITION_COMPUTE_STATUS 0x3a0c
 #define NBIO_PARTITION_MEM_STATUS 0x3a10
+#define NBIO_PARTITION_MEM_CAP 0x3a08
+#define SDMA_GFX_RB_CNTL 0x4b80
 
 // Range of register addresses to store the base addresses of
 // page tables for contexts 0-15
@@ -147,7 +149,7 @@ static constexpr uint32_t PSP_RB_FRAME_SIZE_DWORDS = 16;
 static constexpr uint32_t PSP_CMD_BUFFER_MAX_SIZE = 1024;
 // PSP command payload begins after the 28-byte command frame header.
 static constexpr uint32_t PSP_CMD_PAYLOAD_OFFSET = 28;
-
+static constexpr uint32_t GFX_CMD_ID_FB_NPS_MODE = 0x00000048;
 // Ring Buffer Frame - always 64 bytes
 typedef struct GEM5_PACKED
 {
@@ -188,7 +190,38 @@ struct PspGfxCmdSriovSpatialPart
 {
     // ... fields up to mode
     uint32_t mode; // The partition mode value
-                   // ... other fields
+    uint32_t override_ips;
+    uint32_t override_xcds_avail;
+    uint32_t override_this_aid;
+    // ... other fields
+};
+
+struct PspGfxCmdFbNpsMode
+{
+    uint32_t mode;
+};
+
+struct PspGfxTmrBitfield
+{
+    uint32_t sriov_enabled : 1;
+    uint32_t virt_phy_addr : 1;
+    uint32_t reserved : 30;
+};
+
+struct PspGfxCmdSetupTmr
+{
+    uint32_t buf_phy_addr_lo;
+    uint32_t buf_phy_addr_hi;
+    uint32_t buf_size;
+
+    union
+    {
+        PspGfxTmrBitfield bitfield;
+        uint32_t tmr_flags;
+    };
+
+    uint32_t system_phy_addr_lo;
+    uint32_t system_phy_addr_hi;
 };
 
 // In src/dev/amdgpu/amdgpu_nbio.hh (outside the AMDGPUNbio class)
@@ -210,6 +243,8 @@ struct PspCommandContext
 
     // The component name is needed for event scheduling
     std::string name;
+
+    uint32_t mem_partition_mode = 0;
 };
 
 class AMDGPUNbio
@@ -297,6 +332,11 @@ class AMDGPUNbio
     Addr psp_ring_listen_addr = 0;
     int psp_ring_size = 0;
     int psp_ring_value = 0;
+
+    Addr tmr_buf_addr = 0;
+    Addr tmr_system_addr = 0;
+    uint32_t tmr_size = 0;
+    uint32_t tmr_flags = 0;
 
     // **REQUIRED PSP-specific MMIO state variables:**
     uint32_t wptr = 0;        // (C2PMSG_67 update)

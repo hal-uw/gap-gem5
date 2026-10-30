@@ -31,6 +31,8 @@
 
 #include "dev/amdgpu/amdgpu_gfx.hh"
 
+#include "base/trace.hh"
+#include "debug/AMDGPUDevice.hh"
 #include "mem/packet_access.hh"
 #include "sim/core.hh"
 
@@ -47,6 +49,7 @@ AMDGPUGfx::AMDGPUGfx()
 void
 AMDGPUGfx::readMMIO(PacketPtr pkt, Addr offset)
 {
+    DPRINTF(AMDGPUDevice, "readMMIO offset %#x\n", offset);
     switch (offset) {
         case AMDGPU_MM_RLC_GPU_CLOCK_COUNT_LSB:
             pkt->setLE<uint32_t>(captured_clock_count);
@@ -55,6 +58,7 @@ AMDGPUGfx::readMMIO(PacketPtr pkt, Addr offset)
             pkt->setLE<uint32_t>(captured_clock_count >> 32);
             break;
         case AMDGPU_MM_SCRATCH_REG0:
+            DPRINTF(AMDGPUDevice, "Read SCRATCH_REG0 = %#x\n", scratchRegs[0]);
             pkt->setLE<uint32_t>(scratchRegs[0]);
             break;
         default:
@@ -75,9 +79,14 @@ AMDGPUGfx::writeMMIO(PacketPtr pkt, Addr offset)
                 captured_clock_count = curTick() / sim_clock::as_int::ns;
             }
             break;
-        case AMDGPU_MM_SCRATCH_REG0:
-            scratchRegs[0] = pkt->getLE<uint32_t>();
+        case AMDGPU_MM_SCRATCH_REG0: {
+            const uint32_t value = pkt->getLE<uint32_t>();
+            DPRINTF(AMDGPUDevice, "Write SCRATCH_REG0 old=%#x new=%#x\n",
+                    scratchRegs[0], value);
+            scratchRegs[0] = value;
+            // scratchRegs[0] = pkt->getLE<uint32_t>();
             break;
+        }
         default:
             break;
     }

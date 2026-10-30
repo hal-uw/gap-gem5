@@ -141,7 +141,15 @@ void
 AMDGPUInterruptHandler::submitWritePointer()
 {
     uint8_t *dataPtr = new uint8_t[sizeof(uint32_t)];
+    // regs.IH_Wptr += sizeof(AMDGPUInterruptCookie);
+    uint32_t oldWptr = regs.IH_Wptr;
     regs.IH_Wptr += sizeof(AMDGPUInterruptCookie);
+
+    DPRINTF(AMDGPUDevice,
+            "IH submitWritePointer: oldWptr=0x%x newWptr=0x%x "
+            "cookieSize=0x%lx WptrAddr=0x%llx\n",
+            oldWptr, regs.IH_Wptr, sizeof(AMDGPUInterruptCookie),
+            (unsigned long long)regs.WptrAddr);
     Addr paddr = regs.WptrAddr;
     std::memcpy(dataPtr, &regs.IH_Wptr, sizeof(uint32_t));
 
@@ -162,6 +170,11 @@ AMDGPUInterruptHandler::submitInterruptCookie()
 
     DPRINTF(AMDGPUDevice, "InterruptHandler rptr: 0x%x wptr: 0x%x\n",
             regs.IH_Rptr, regs.IH_Wptr);
+    DPRINTF(AMDGPUDevice,
+            "IH submitInterruptCookie: base=0x%llx rptr=0x%x wptr=0x%x "
+            "cookieSize=0x%lx paddr=0x%llx\n",
+            (unsigned long long)regs.baseAddr, regs.IH_Rptr, regs.IH_Wptr,
+            cookieSize, (unsigned long long)paddr);
     dmaEvent = new AMDGPUInterruptHandler::DmaEvent(this, 1, dataPtr);
     dmaWrite(paddr, cookieSize, dmaEvent, dataPtr);
 
@@ -181,12 +194,30 @@ AMDGPUInterruptHandler::writeMMIO(PacketPtr pkt, Addr mmio_offset)
         case mmIH_RB_BASE_HI:
             setBaseHi(pkt->getLE<uint32_t>());
             break;
-        case mmIH_RB_RPTR:
+        /*case mmIH_RB_RPTR:
             setRptr(pkt->getLE<uint32_t>());
             break;
         case mmIH_RB_WPTR:
             setWptr(pkt->getLE<uint32_t>());
             break;
+        */
+        case mmIH_RB_RPTR: {
+            const uint32_t data = pkt->getLE<uint32_t>();
+            DPRINTF(AMDGPUDevice,
+                    "IH MMIO write: RB_RPTR offset=%#x data=%#x\n",
+                    mmio_offset, data);
+            setRptr(data);
+            break;
+        }
+
+        case mmIH_RB_WPTR: {
+            const uint32_t data = pkt->getLE<uint32_t>();
+            DPRINTF(AMDGPUDevice,
+                    "IH MMIO write: RB_WPTR offset=%#x data=%#x\n",
+                    mmio_offset, data);
+            setWptr(data);
+            break;
+        }
         case mmIH_RB_WPTR_ADDR_LO:
             setWptrAddrLo(pkt->getLE<uint32_t>());
             break;
@@ -209,6 +240,7 @@ AMDGPUInterruptHandler::writeMMIO(PacketPtr pkt, Addr mmio_offset)
 void
 AMDGPUInterruptHandler::setCntl(const uint32_t &data)
 {
+    DPRINTF(AMDGPUDevice, "IH setCntl: old=%#x new=%#x\n", regs.IH_Cntl, data);
     regs.IH_Cntl = data;
 }
 
@@ -217,23 +249,31 @@ AMDGPUInterruptHandler::setBase(const uint32_t &data)
 {
     regs.baseAddr = data;
     regs.baseAddr <<= 8;
+    DPRINTF(AMDGPUDevice, "IH setBase: input=%#x baseAddr=%#llx\n", data,
+            (unsigned long long)regs.baseAddr);
 }
 
 void
 AMDGPUInterruptHandler::setBaseHi(const uint32_t &data)
 {
     regs.baseAddr |= static_cast<uint64_t>(data) << 40;
+    DPRINTF(AMDGPUDevice, "IH setBaseHi: input=%#x baseAddr=%#llx\n", data,
+            (unsigned long long)regs.baseAddr);
 }
 
 void
 AMDGPUInterruptHandler::setRptr(const uint32_t &data)
 {
+    DPRINTF(AMDGPUDevice, "IH setRptr: old=0x%x new=0x%x\n", regs.IH_Rptr,
+            data);
     regs.IH_Rptr = data;
 }
 
 void
 AMDGPUInterruptHandler::setWptr(const uint32_t &data)
 {
+    DPRINTF(AMDGPUDevice, "IH setWptr: old=0x%x new=0x%x\n", regs.IH_Wptr,
+            data);
     regs.IH_Wptr = data;
 }
 
@@ -242,6 +282,10 @@ AMDGPUInterruptHandler::setWptrAddrLo(const uint32_t &data)
 {
     regs.IH_Wptr_Addr_Lo = data;
     regs.WptrAddr |= regs.IH_Wptr_Addr_Lo;
+    DPRINTF(AMDGPUDevice,
+            "IH setWptrAddrLo: data=0x%x lo=0x%x hi=0x%x WptrAddr=0x%llx\n",
+            data, regs.IH_Wptr_Addr_Lo, regs.IH_Wptr_Addr_Hi,
+            (unsigned long long)regs.WptrAddr);
 }
 
 void
@@ -249,6 +293,10 @@ AMDGPUInterruptHandler::setWptrAddrHi(const uint32_t &data)
 {
     regs.IH_Wptr_Addr_Hi = data;
     regs.WptrAddr |= ((uint64_t)regs.IH_Wptr_Addr_Hi) << 32;
+    DPRINTF(AMDGPUDevice,
+            "IH setWptrAddrHi: data=0x%x lo=0x%x hi=0x%x WptrAddr=0x%llx\n",
+            data, regs.IH_Wptr_Addr_Lo, regs.IH_Wptr_Addr_Hi,
+            (unsigned long long)regs.WptrAddr);
 }
 
 void
@@ -260,6 +308,8 @@ AMDGPUInterruptHandler::setDoorbellOffset(const uint32_t &data)
 void
 AMDGPUInterruptHandler::updateRptr(const uint32_t &data)
 {
+    DPRINTF(AMDGPUDevice, "IH updateRptr: old=0x%x new=0x%x\n", regs.IH_Rptr,
+            data);
     regs.IH_Rptr = data; // update ring buffer rptr offset
 }
 

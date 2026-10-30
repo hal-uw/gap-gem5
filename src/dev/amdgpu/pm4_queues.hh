@@ -33,6 +33,7 @@
 #ifndef __DEV_AMDGPU_PM4_QUEUES_HH__
 #define __DEV_AMDGPU_PM4_QUEUES_HH__
 
+#include "debug/PM4PacketProcessor.hh"
 #include "dev/amdgpu/pm4_defines.hh"
 
 namespace gem5
@@ -475,7 +476,14 @@ class PM4Queue
         if (ib()) {
             return q->ibBase + q->ibRptr;
         } else {
-            return q->base + (q->rptr % size());
+            Addr result = q->base + (q->rptr % size());
+
+            DPRINTF(PM4PacketProcessor,
+                    "QUEUE %d rptr(): base=%#lx raw_rptr=%#lx size=%#lx "
+                    "result=%#lx\n",
+                    _id, q->base, q->rptr, size(), result);
+
+            return result;
         }
     }
 

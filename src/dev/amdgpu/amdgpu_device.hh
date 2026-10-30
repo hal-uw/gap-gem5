@@ -141,7 +141,8 @@ class AMDGPUDevice : public PciEndpoint
     // SDMA ID to function
     typedef void (SDMAEngine::*sdmaFuncPtr)(uint32_t);
     std::unordered_map<uint32_t, sdmaFuncPtr> sdmaFunc;
-
+    typedef uint32_t (SDMAEngine::*sdmaReadFuncPtr)(uint32_t);
+    std::unordered_map<uint32_t, sdmaReadFuncPtr> sdmaReadFunc;
     /**
      * Initial checkpoint support variables.
      */

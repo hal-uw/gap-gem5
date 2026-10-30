@@ -33,6 +33,7 @@
 
 #include "debug/AMDGPUDevice.hh"
 #include "dev/amdgpu/amdgpu_device.hh"
+#include "dev/amdgpu/amdgpu_vm.hh"
 #include "mem/packet_access.hh"
 
 namespace gem5
@@ -42,6 +43,10 @@ AMDGPUNbio::AMDGPUNbio()
 {
     // All read-before-write MMIOs go here
     triggered_reads[AMDGPU_MP0_SMN_C2PMSG_64] = 0x80000000;
+
+    // Default partition states
+    regs[NBIO_PARTITION_MEM_STATUS] = 0x10; // NPS1
+    regs[NBIO_PARTITION_MEM_CAP] = 0x8B; // indicate MI300X supports NPS1,2,4,8
 }
 
 void
@@ -132,8 +137,32 @@ AMDGPUNbio::readMMIO(PacketPtr pkt, Addr offset)
             }
             break;
         case MI200_BIOS_SCRATCH_7:
-            pkt->setLE<uint32_t>(0x200); // ATOM_S7_ASIC_INIT_COMPLETE_MASK
+
+        case NBIO_PARTITION_MEM_STATUS:
+            DPRINTF(AMDGPUDevice,
+                    "Reading NBIO_PARTITION_MEM_STATUS returning %#x\n",
+                    regs[offset]);
+
+            pkt->setLE<uint32_t>(regs[offset]);
             break;
+        case NBIO_PARTITION_MEM_CAP:
+            DPRINTF(AMDGPUDevice,
+                    "Reading NBIO_PARTITION_MEM_CAP returning %#x\n",
+                    regs[offset]);
+
+            pkt->setLE<uint32_t>(regs[offset]);
+            break;
+        case MI300X_FB_LOCATION_BASE:
+        case MI300X_FB_LOCATION_TOP:
+            DPRINTF(AMDGPUDevice,
+                    "Reading MI300X FB LOCATION MMIO %#x returning %#x\n",
+                    offset, regs[offset]);
+            pkt->setLE<uint32_t>(regs[offset]);
+            break;
+        case SDMA_GFX_RB_CNTL:
+            pkt->setLE<uint32_t>(regs[offset]);
+            break;
+
         default:
             if (triggered_reads.count(offset)) {
                 DPRINTF(AMDGPUDevice, "Found triggered read for %#x\n",
@@ -146,6 +175,7 @@ AMDGPUNbio::readMMIO(PacketPtr pkt, Addr offset)
                         offset, regs[offset]);
                 pkt->setLE<uint32_t>(regs[offset]);
             } else {
+                warn("NBIO Unknown MMIO %#x (%#x)\n", offset, pkt->getAddr());
                 DPRINTF(AMDGPUDevice, "NBIO Unknown MMIO %#x (%#x)\n", offset,
                         pkt->getAddr());
             }
@@ -275,12 +305,12 @@ AMDGPUNbio::writeMMIO(PacketPtr pkt, Addr offset)
 bool
 AMDGPUNbio::readFrame(PacketPtr pkt, Addr offset)
 {
-    if (offset == psp_ring_dev_addr) {
+    /*if (offset == psp_ring_dev_addr) {
         psp_ring_value++;
         pkt->setUintX(psp_ring_value, ByteOrder::little);
 
         return true;
-    }
+    }*/
 
     return false;
 }
@@ -450,6 +480,13 @@ AMDGPUNbio::CmdBufferAndProcessDone(PspCommandContext *ctx)
                 "PSP: GFX_CMD_ID_SRIOV_SPATIAL_PART processed.Mode: % #x\n ",
                 ctx->sriov_spatial_mode);
 
+            DPRINTF(AMDGPUDevice,
+                    "PSP spatial part: mode=%#x override_ips=%#x "
+                    "override_xcds_avail=%#x override_this_aid=%#x\n",
+                    spatial_part->mode, spatial_part->override_ips,
+                    spatial_part->override_xcds_avail,
+                    spatial_part->override_this_aid);
+
             // Update the register value that the driver reads back
             // NOTE: This assumes gpuDevice->setRegVal manages the
             // NBIO_PARTITION_COMPUTE_STATUS value
@@ -474,6 +511,64 @@ AMDGPUNbio::CmdBufferAndProcessDone(PspCommandContext *ctx)
                                  (ctx->sriov_spatial_mode << 0x4));
         } break;
 
+        case GFX_CMD_ID_FB_NPS_MODE: {
+            PspGfxCmdFbNpsMode *nps_mode =
+                (PspGfxCmdFbNpsMode *)(ctx->cmd_buffer +
+                                       PSP_CMD_PAYLOAD_OFFSET);
+
+            ctx->mem_partition_mode = nps_mode->mode;
+
+            DPRINTF(AMDGPUDevice,
+                    "PSP: GFX_CMD_ID_FB_NPS_MODE processed. Mode: %#x\n",
+                    ctx->mem_partition_mode);
+
+            // Convert driver mode to NBIO_PARTITION_MEM_STATUS encoding
+            uint32_t mem_status = 0x10; // default NPS1
+
+            if (ctx->mem_partition_mode == 1) {
+                mem_status = 0x10; // NPS1
+            } else if (ctx->mem_partition_mode == 2) {
+                mem_status = 0x20; // NPS2
+            } else if (ctx->mem_partition_mode == 4) {
+                mem_status = 0x40; // NPS4
+            } else if (ctx->mem_partition_mode == 8) {
+                mem_status = 0x80; // NPS8
+            }
+            ctx->mem_partition_mode = mem_status;
+
+            gpuDevice->setRegVal(NBIO_PARTITION_MEM_STATUS,
+                                 ctx->mem_partition_mode);
+        } break;
+
+        case GFX_CMD_ID_SETUP_TMR: {
+            PspGfxCmdSetupTmr *setup_tmr =
+                (PspGfxCmdSetupTmr *)(ctx->cmd_buffer +
+                                      PSP_CMD_PAYLOAD_OFFSET);
+
+            tmr_buf_addr = ((Addr)setup_tmr->buf_phy_addr_hi << 32) |
+                           setup_tmr->buf_phy_addr_lo;
+
+            tmr_size = setup_tmr->buf_size;
+
+            tmr_system_addr = ((Addr)setup_tmr->system_phy_addr_hi << 32) |
+                              setup_tmr->system_phy_addr_lo;
+
+            DPRINTF(AMDGPUDevice,
+                    "SETUP_TMR saved buf=%#lx size=%u system=%#lx\n",
+                    tmr_buf_addr, tmr_size, tmr_system_addr);
+
+            DPRINTF(AMDGPUDevice,
+                    "PSP: GFX_CMD_ID_SETUP_TMR processed. "
+                    "buf=%#lx size=%#x system=%#lx virt_phy=%d sriov=%d\n",
+                    tmr_buf_addr, tmr_size, tmr_system_addr,
+                    setup_tmr->bitfield.virt_phy_addr,
+                    setup_tmr->bitfield.sriov_enabled);
+
+            DPRINTF(AMDGPUDevice, "PSP: SETUP_TMR fence=%u addr=%#lx\n",
+                    ctx->fence_value, ctx->fence_addr);
+
+        } break;
+
         default:
             DPRINTF(AMDGPUDevice,
                     "PSP: Unknown command ID %#x. Doing nothing.\n", cmd_id);
@@ -481,6 +576,8 @@ AMDGPUNbio::CmdBufferAndProcessDone(PspCommandContext *ctx)
     }
 
     // again we have to write the physical fence address
+    DPRINTF(AMDGPUDevice, "PSP: Fence addr before translation %#lx\n",
+            ctx->fence_addr);
     bool check_addr = gpuDevice->getVM().inMMHUB(ctx->fence_addr);
     if (check_addr) {
         ctx->fence_addr = ctx->fence_addr - gpuDevice->getVM().getMMHUBBase();
@@ -489,12 +586,14 @@ AMDGPUNbio::CmdBufferAndProcessDone(PspCommandContext *ctx)
                 "PSP: Fence address %#lx not in MMHUB aperture. Cannot write "
                 "fence.\n",
                 ctx->fence_addr);
+        DPRINTF(AMDGPUDevice, "PSP: MMHUB base %#lx\n",
+                gpuDevice->getVM().getMMHUBBase());
         return;
     }
     // 4. Write Fence Value (Start the final asynchronous step)
-    DPRINTF(AMDGPUDevice, "PSP: Writing fence value %u to address %#lx\n",
+    DPRINTF(AMDGPUDevice,
+            "PSP: Writing fence cmd_id=%#x fence=%u fence_addr=%#lx\n", cmd_id,
             ctx->fence_value, ctx->fence_addr);
-
     // We must use the value stored in the context struct
     // Schedule the completion callback after a sufficient latency to
     // simulate command execution time

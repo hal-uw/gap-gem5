@@ -116,13 +116,25 @@ AMDGPUDevice::AMDGPUDevice(const AMDGPUDeviceParams &p)
     // Map SDMA MMIO addresses to functions
     sdmaFunc.insert({0x81, &SDMAEngine::setGfxBaseLo});
     sdmaFunc.insert({0x82, &SDMAEngine::setGfxBaseHi});
+    sdmaFunc.insert({0x83, &SDMAEngine::setGfxRptrValueLo});
+    sdmaFunc.insert({0x84, &SDMAEngine::setGfxRptrValueHi});
+    sdmaFunc.insert({0x85, &SDMAEngine::setGfxWptrLo});
+    sdmaFunc.insert({0x86, &SDMAEngine::setGfxWptrHi});
     sdmaFunc.insert({0x88, &SDMAEngine::setGfxRptrHi});
     sdmaFunc.insert({0x89, &SDMAEngine::setGfxRptrLo});
     sdmaFunc.insert({0x92, &SDMAEngine::setGfxDoorbellLo});
     sdmaFunc.insert({0xab, &SDMAEngine::setGfxDoorbellOffsetLo});
-    sdmaFunc.insert({0x80, &SDMAEngine::setGfxSize});
+    sdmaFunc.insert({0x80, &SDMAEngine::setRbCntl});
     sdmaFunc.insert({0xb2, &SDMAEngine::setGfxWptrLo});
     sdmaFunc.insert({0xb3, &SDMAEngine::setGfxWptrHi});
+    sdmaFunc.insert({0x1b4, &SDMAEngine::setRlc1CsaAddrLo});
+    sdmaFunc.insert({0x47, &SDMAEngine::setUtcl1Timeout});
+    sdmaFunc.insert({0x6d, &SDMAEngine::setCntl});
+    sdmaReadFunc.insert({0x1b4, &SDMAEngine::getRlc1CsaAddrLo});
+    sdmaReadFunc.insert({0x80, &SDMAEngine::getRbCntl});
+    sdmaReadFunc.insert({0x47, &SDMAEngine::getUtcl1Timeout});
+    sdmaReadFunc.insert({0x6d, &SDMAEngine::getCntl});
+
     if (p.device_name == "Vega10") {
         sdmaFunc.insert({0xe1, &SDMAEngine::setPageBaseLo});
         sdmaFunc.insert({0xe9, &SDMAEngine::setPageRptrLo});
@@ -413,9 +425,10 @@ AMDGPUDevice::writeConfig(PacketPtr pkt)
 {
     [[maybe_unused]] int offset = pkt->getAddr() & PCI_CONFIG_SIZE;
     DPRINTF(AMDGPUDevice,
-            "Write Config: from offset: %#x size: %#x "
+            "Write Config: from addr: %#x offset: %#x size: %#x "
             "data: %#x\n",
-            offset, pkt->getSize(), pkt->getUintX(ByteOrder::little));
+            pkt->getAddr(), offset, pkt->getSize(),
+            pkt->getUintX(ByteOrder::little));
 
     if (offset < PCI_DEVICE_SPECIFIC) {
         // For the Expansion ROM BAR, Linux will write ~0x7ff before reading
@@ -471,9 +484,9 @@ AMDGPUDevice::readFrame(PacketPtr pkt, Addr offset)
      * first, ignoring any writes from driver. (2) Any other address from
      * device backing store / abstract memory class functionally.
      */
-    if (nbio.readFrame(pkt, offset)) {
+    /*if (nbio.readFrame(pkt, offset)) {
         return;
-    }
+    }*/
 
     /*
      * Read the value from device memory. This must be done functionally
@@ -523,6 +536,27 @@ AMDGPUDevice::readMMIO(PacketPtr pkt, Addr offset)
     // few more dynamic MMIOs.
     DPRINTF(AMDGPUDevice, "Read MMIO %#lx\n", offset);
     mmioReader.readFromTrace(pkt, MMIO_BAR, offset);
+
+    for (int idx = 0; idx < sdmaIds.size(); ++idx) {
+        if (sdmaMmios[idx].contains(offset)) {
+            Addr sdma_offset = (offset - sdmaMmios[idx].start()) >> 2;
+            if (sdmaReadFunc.count(sdma_offset)) {
+                DPRINTF(AMDGPUDevice, "Calling SDMA read MMIO func %#lx\n",
+                        sdma_offset);
+
+                sdmaReadFuncPtr mptr = sdmaReadFunc[sdma_offset];
+
+                uint32_t data = (getSDMAById(idx)->*mptr)(sdma_offset);
+
+                pkt->setLE<uint32_t>(data);
+            } else {
+                DPRINTF(AMDGPUDevice,
+                        "No SDMA read function for offset %#lx\n",
+                        sdma_offset);
+            }
+            return;
+        }
+    }
 
     if (aperture == gpuvm.getMMIORange(NBIO_MMIO_RANGE)) {
         DPRINTF(AMDGPUDevice, "NBIO base\n");
@@ -598,7 +632,8 @@ void
 AMDGPUDevice::writeDoorbell(PacketPtr pkt, Addr offset)
 {
     DPRINTF(AMDGPUDevice, "Wrote doorbell %#lx\n", offset);
-
+    DPRINTF(AMDGPUDevice, "Doorbell RAW: offset=0x%lx size=%u data=0x%x\n",
+            offset, pkt->getSize(), pkt->getLE<uint32_t>());
     if (doorbells.find(offset) != doorbells.end()) {
         QueueType q_type = doorbells[offset].qtype;
         int ip_id = doorbells[offset].ip_id;
@@ -633,6 +668,8 @@ AMDGPUDevice::writeDoorbell(PacketPtr pkt, Addr offset)
                     offset, pkt->getLE<uint64_t>() + 1);
             } break;
             case InterruptHandler:
+                DPRINTF(AMDGPUDevice, "IH CASE: offset=0x%lx data=0x%x\n",
+                        offset, pkt->getLE<uint32_t>());
                 deviceIH->updateRptr(pkt->getLE<uint32_t>());
                 break;
             case RLC: {
@@ -680,6 +717,7 @@ AMDGPUDevice::writeMMIO(PacketPtr pkt, Addr offset)
             } else {
                 DPRINTF(AMDGPUDevice, "Unknown SDMA%d MMIO: %#lx\n", idx,
                         sdma_offset);
+                warn("Unknown SDMA%d MMIO: %#lx\n", idx, sdma_offset);
             }
 
             return;

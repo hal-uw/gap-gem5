@@ -297,12 +297,17 @@ class SDMAEngine : public DmaVirtDevice
     uint64_t gfxDoorbell;
     uint64_t gfxDoorbellOffset;
     uint64_t gfxWptr;
+    uint64_t gfxRptrValue;
     /* Page ring buffer registers */
     uint64_t pageBase;
     uint64_t pageRptr;
     uint64_t pageDoorbell;
     uint64_t pageDoorbellOffset;
     uint64_t pageWptr;
+    uint32_t gfxRbCntl;
+    uint32_t rlc1CsaAddrLo;
+    uint32_t sdmaCntl;
+    uint32_t utcl1Timeout;
 
     AMDGPUDevice *gpuDevice;
     VegaISA::Walker *walker;
@@ -469,6 +474,11 @@ class SDMAEngine : public DmaVirtDevice
         return gfxWptr;
     }
     uint64_t
+    getGfxRptrValue()
+    {
+        return gfxRptrValue;
+    }
+    uint64_t
     getPageBase()
     {
         return pageBase;
@@ -493,6 +503,10 @@ class SDMAEngine : public DmaVirtDevice
     {
         return pageWptr;
     }
+    uint32_t getRlc1CsaAddrLo(uint32_t offset);
+    uint32_t getCntl(uint32_t offset);
+    uint32_t getUtcl1Timeout(uint32_t offset);
+    uint32_t getRbCntl(uint32_t offset);
 
     /**
      * Methods for setting the values of SDMA MMIO registers.
@@ -508,6 +522,8 @@ class SDMAEngine : public DmaVirtDevice
     void setGfxDoorbellOffsetLo(uint32_t data);
     void setGfxDoorbellOffsetHi(uint32_t data);
     void setGfxSize(uint32_t data);
+    void setGfxRptrValueLo(uint32_t data);
+    void setGfxRptrValueHi(uint32_t data);
     void setGfxWptrLo(uint32_t data);
     void setGfxWptrHi(uint32_t data);
     void setPageBaseLo(uint32_t data);
@@ -521,6 +537,10 @@ class SDMAEngine : public DmaVirtDevice
     void setPageSize(uint32_t data);
     void setPageWptrLo(uint32_t data);
     void setPageWptrHi(uint32_t data);
+    void setRlc1CsaAddrLo(uint32_t data);
+    void setCntl(uint32_t data);
+    void setUtcl1Timeout(uint32_t data);
+    void setRbCntl(uint32_t data);
 
     /**
      * Methods for RLC queues

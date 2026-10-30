@@ -54,11 +54,16 @@ SDMAEngine::SDMAEngine(const SDMAEngineParams &p)
       gfxDoorbell(0),
       gfxDoorbellOffset(0),
       gfxWptr(0),
+      gfxRptrValue(0),
       pageBase(0),
       pageRptr(0),
       pageDoorbell(0),
       pageDoorbellOffset(0),
       pageWptr(0),
+      gfxRbCntl(0),
+      rlc1CsaAddrLo(0),
+      sdmaCntl(0),
+      utcl1Timeout(0),
       gpuDevice(nullptr),
       walker(p.walker),
       mmioBase(p.mmio_base),
@@ -168,6 +173,12 @@ SDMAEngine::getDeviceAddress(Addr raw_addr)
 TranslationGenPtr
 SDMAEngine::translate(Addr vaddr, Addr size)
 {
+    DPRINTF(SDMAEngine,
+            "translate: vaddr=%#lx size=%#lx cur_vmid=%d "
+            "inAGP=%d inMMHUB=%d\n",
+            (unsigned long)vaddr, (unsigned long)size, cur_vmid,
+            gpuDevice->getVM().inAGP(vaddr),
+            gpuDevice->getVM().inMMHUB(vaddr));
     if (cur_vmid > 0) {
         // Only user translation is available to user queues (vmid > 0)
         return TranslationGenPtr(new AMDGPUVM::UserTranslationGen(
@@ -541,7 +552,13 @@ SDMAEngine::decodeHeader(SDMAQueue *q, uint32_t header)
         case SDMA_OP_TRAP: {
             DPRINTF(SDMAEngine, "SDMA Trap packet\n");
             dmaBuffer = new sdmaTrap();
+            DPRINTF(SDMAEngine, "TRAP before DMA read: rptr=%#lx size=%zu\n",
+                    (unsigned long)q->rptr(), sizeof(sdmaTrap));
             cb = new DmaVirtCallback<uint64_t>([=, this](const uint64_t &) {
+                DPRINTF(SDMAEngine,
+                        "TRAP after DMA read: rptr=%#lx raw=%#010x\n",
+                        (unsigned long)q->rptr(),
+                        *reinterpret_cast<uint32_t *>(dmaBuffer));
                 trap(q, (sdmaTrap *)dmaBuffer);
             });
             dmaReadVirt(q->rptr(), sizeof(sdmaTrap), cb, dmaBuffer,
@@ -940,6 +957,15 @@ SDMAEngine::trap(SDMAQueue *q, sdmaTrap *pkt)
 
     DPRINTF(SDMAEngine, "Trap contextId: %p\n", pkt->intrContext);
 
+    DPRINTF(SDMAEngine,
+            "SDMA TRAP: intrContext=%#010x "
+            "contextId=%u "
+            "rbRptr=%u (0x%x) "
+            "ibOffset=%u (0x%x) "
+            "reserved=%u\n",
+            pkt->intrContext, pkt->contextId, pkt->rbRptr, pkt->rbRptr,
+            pkt->ibOffset, pkt->ibOffset, pkt->reserved);
+
     uint32_t ring_id = (q->queueType() == SDMAPage) ? 3 : 0;
 
     int node_id = 0;
@@ -1337,6 +1363,7 @@ SDMAEngine::serialize(CheckpointOut &cp) const
     SERIALIZE_SCALAR(gfxDoorbell);
     SERIALIZE_SCALAR(gfxDoorbellOffset);
     SERIALIZE_SCALAR(gfxWptr);
+    SERIALIZE_SCALAR(gfxRptrValue);
     SERIALIZE_SCALAR(pageBase);
     SERIALIZE_SCALAR(pageRptr);
     SERIALIZE_SCALAR(pageDoorbell);
@@ -1442,6 +1469,7 @@ SDMAEngine::unserialize(CheckpointIn &cp)
     UNSERIALIZE_SCALAR(gfxDoorbell);
     UNSERIALIZE_SCALAR(gfxDoorbellOffset);
     UNSERIALIZE_SCALAR(gfxWptr);
+    UNSERIALIZE_SCALAR(gfxRptrValue);
     UNSERIALIZE_SCALAR(pageBase);
     UNSERIALIZE_SCALAR(pageRptr);
     UNSERIALIZE_SCALAR(pageDoorbell);
@@ -1541,83 +1569,88 @@ SDMAEngine::unserialize(CheckpointIn &cp)
     }
 }
 
-void
-SDMAEngine::writeMMIO(PacketPtr pkt, Addr mmio_offset)
-{
-    DPRINTF(SDMAEngine, "Writing offset %#x with data %x\n", mmio_offset,
-            pkt->getLE<uint32_t>());
-
-    // In Vega10 headers, the offsets are the same for both SDMAs
-    switch (mmio_offset) {
-        case mmSDMA_GFX_RB_BASE:
-            setGfxBaseLo(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_GFX_RB_BASE_HI:
-            setGfxBaseHi(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_GFX_RB_RPTR_ADDR_LO:
-            setGfxRptrLo(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_GFX_RB_RPTR_ADDR_HI:
-            setGfxRptrHi(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_GFX_DOORBELL:
-            setGfxDoorbellLo(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_GFX_DOORBELL_OFFSET:
-            setGfxDoorbellOffsetLo(pkt->getLE<uint32_t>());
-            // Bit 28 of doorbell indicates that doorbell is enabled.
-            if (bits(getGfxDoorbell(), 28, 28)) {
-                gpuDevice->setDoorbellType(getGfxDoorbellOffset(),
-                                           QueueType::SDMAGfx);
-                gpuDevice->setSDMAEngine(getGfxDoorbellOffset(), this);
-            }
-            break;
-        case mmSDMA_GFX_RB_CNTL: {
-            uint32_t rb_size = bits(pkt->getLE<uint32_t>(), 6, 1);
-            assert(rb_size >= 6 && rb_size <= 62);
-            setGfxSize(1 << (rb_size + 2));
-        } break;
-        case mmSDMA_GFX_RB_WPTR_POLL_ADDR_LO:
-            setGfxWptrLo(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_GFX_RB_WPTR_POLL_ADDR_HI:
-            setGfxWptrHi(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_PAGE_RB_BASE:
-            setPageBaseLo(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_PAGE_RB_RPTR_ADDR_LO:
-            setPageRptrLo(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_PAGE_RB_RPTR_ADDR_HI:
-            setPageRptrHi(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_PAGE_DOORBELL:
-            setPageDoorbellLo(pkt->getLE<uint32_t>());
-            break;
-        case mmSDMA_PAGE_DOORBELL_OFFSET:
-            setPageDoorbellOffsetLo(pkt->getLE<uint32_t>());
-            // Bit 28 of doorbell indicates that doorbell is enabled.
-            if (bits(getPageDoorbell(), 28, 28)) {
-                gpuDevice->setDoorbellType(getPageDoorbellOffset(),
-                                           QueueType::SDMAPage);
-                gpuDevice->setSDMAEngine(getPageDoorbellOffset(), this);
-            }
-            break;
-        case mmSDMA_PAGE_RB_CNTL: {
-            uint32_t rb_size = bits(pkt->getLE<uint32_t>(), 6, 1);
-            assert(rb_size >= 6 && rb_size <= 62);
-            setPageSize(1 << (rb_size + 2));
-        } break;
-        case mmSDMA_PAGE_RB_WPTR_POLL_ADDR_LO:
-            setPageWptrLo(pkt->getLE<uint32_t>());
-            break;
-        default:
-            DPRINTF(SDMAEngine, "Unknown SDMA MMIO %#x\n", mmio_offset);
-            break;
-    }
-}
+// void
+// SDMAEngine::writeMMIO(PacketPtr pkt, Addr mmio_offset)
+// {
+//     DPRINTF(SDMAEngine, "Writing offset %#x with data %x\n", mmio_offset,
+//             pkt->getLE<uint32_t>());
+//
+//     // In Vega10 headers, the offsets are the same for both SDMAs
+//     switch (mmio_offset) {
+//       case mmSDMA_GFX_RB_BASE:
+//         setGfxBaseLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_GFX_RB_BASE_HI:
+//         setGfxBaseHi(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_GFX_RB_RPTR_ADDR_LO:
+//         setGfxRptrLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_GFX_RB_RPTR_ADDR_HI:
+//         setGfxRptrHi(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_GFX_DOORBELL:
+//         setGfxDoorbellLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_GFX_DOORBELL_OFFSET:
+//         setGfxDoorbellOffsetLo(pkt->getLE<uint32_t>());
+//         // Bit 28 of doorbell indicates that doorbell is enabled.
+//         if (bits(getGfxDoorbell(), 28, 28)) {
+//             gpuDevice->setDoorbellType(getGfxDoorbellOffset(),
+//                                        QueueType::SDMAGfx);
+//             gpuDevice->setSDMAEngine(getGfxDoorbellOffset(), this);
+//         }
+//         break;
+//       case mmSDMA_GFX_RB_CNTL: {
+//         uint32_t rb_size = bits(pkt->getLE<uint32_t>(), 6, 1);
+//         DPRINTF(SDMAEngine,
+//             "SDMA_GFX_RB_CNTL raw rb_size field=%u\n",
+//             rb_size);
+//         setGfxSize(1 << (rb_size + 2));
+//       } break;
+//       case mmSDMA_GFX_RB_WPTR_POLL_ADDR_LO:
+//         setGfxWptrLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_GFX_RB_WPTR_POLL_ADDR_HI:
+//         setGfxWptrHi(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_PAGE_RB_BASE:
+//         setPageBaseLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_PAGE_RB_RPTR_ADDR_LO:
+//         setPageRptrLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_PAGE_RB_RPTR_ADDR_HI:
+//         setPageRptrHi(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_PAGE_DOORBELL:
+//         setPageDoorbellLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_PAGE_DOORBELL_OFFSET:
+//         setPageDoorbellOffsetLo(pkt->getLE<uint32_t>());
+//         // Bit 28 of doorbell indicates that doorbell is enabled.
+//         if (bits(getPageDoorbell(), 28, 28)) {
+//             gpuDevice->setDoorbellType(getPageDoorbellOffset(),
+//                                        QueueType::SDMAPage);
+//             gpuDevice->setSDMAEngine(getPageDoorbellOffset(), this);
+//         }
+//         break;
+//       case mmSDMA_PAGE_RB_CNTL: {
+//         uint32_t rb_size = bits(pkt->getLE<uint32_t>(), 6, 1);
+//         assert(rb_size >= 6 && rb_size <= 62);
+//         setPageSize(1 << (rb_size + 2));
+//       } break;
+//       case mmSDMA_PAGE_RB_WPTR_POLL_ADDR_LO:
+//         setPageWptrLo(pkt->getLE<uint32_t>());
+//         break;
+//       case mmSDMA_RLC1_CSA_ADDR_LO:
+//         setRlc1CsaAddrLo(pkt->getLE<uint32_t>());
+//         break;
+//       default:
+//         DPRINTF(SDMAEngine, "Unknown SDMA MMIO %#x\n", mmio_offset);
+//         break;
+//     }
+// }
 
 void
 SDMAEngine::setGfxBaseLo(uint32_t data)
@@ -1687,8 +1720,23 @@ void
 SDMAEngine::setGfxSize(uint32_t data)
 {
     uint32_t rb_size = bits(data, 6, 1);
+    DPRINTF(SDMAEngine, "setGfxSize raw data=%#x rb_size=%u\n", data, rb_size);
     assert(rb_size >= 6 && rb_size <= 62);
     gfx.size(1 << (rb_size + 2));
+}
+
+void
+SDMAEngine::setGfxRptrValueLo(uint32_t data)
+{
+    gfxRptrValue = insertBits(gfxRptrValue, 31, 0, 0);
+    gfxRptrValue |= data;
+}
+
+void
+SDMAEngine::setGfxRptrValueHi(uint32_t data)
+{
+    gfxRptrValue = insertBits(gfxRptrValue, 63, 32, 0);
+    gfxRptrValue |= ((uint64_t)data) << 32;
 }
 
 void
@@ -1701,7 +1749,7 @@ SDMAEngine::setGfxWptrLo(uint32_t data)
 void
 SDMAEngine::setGfxWptrHi(uint32_t data)
 {
-    gfxWptr = insertBits(gfxWptr, 31, 0, 0);
+    gfxWptr = insertBits(gfxWptr, 63, 32, 0);
     gfxWptr |= ((uint64_t)data) << 32;
 }
 
@@ -1791,4 +1839,52 @@ SDMAEngine::setPageWptrHi(uint32_t data)
     pageWptr |= ((uint64_t)data) << 32;
 }
 
+void
+SDMAEngine::setRlc1CsaAddrLo(uint32_t data)
+{
+    rlc1CsaAddrLo = data;
+}
+
+void
+SDMAEngine::setRbCntl(uint32_t data)
+{
+    setGfxSize(data);
+    gfxRbCntl = data;
+}
+
+void
+SDMAEngine::setCntl(uint32_t data)
+{
+    sdmaCntl = data;
+}
+
+void
+SDMAEngine::setUtcl1Timeout(uint32_t data)
+{
+    utcl1Timeout = data;
+}
+
+uint32_t
+SDMAEngine::getRlc1CsaAddrLo(uint32_t offset)
+{
+    return rlc1CsaAddrLo;
+}
+
+uint32_t
+SDMAEngine::getCntl(uint32_t offset)
+{
+    return sdmaCntl;
+}
+
+uint32_t
+SDMAEngine::getUtcl1Timeout(uint32_t offset)
+{
+    return utcl1Timeout;
+}
+
+uint32_t
+SDMAEngine::getRbCntl(uint32_t offset)
+{
+    return gfxRbCntl;
+}
 } // namespace gem5
