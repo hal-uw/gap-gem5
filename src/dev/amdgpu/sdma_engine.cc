@@ -1730,6 +1730,7 @@ SDMAEngine::setGfxRptrValueLo(uint32_t data)
 {
     gfxRptrValue = insertBits(gfxRptrValue, 31, 0, 0);
     gfxRptrValue |= data;
+    applyGfxRptrValue();
 }
 
 void
@@ -1737,6 +1738,20 @@ SDMAEngine::setGfxRptrValueHi(uint32_t data)
 {
     gfxRptrValue = insertBits(gfxRptrValue, 63, 32, 0);
     gfxRptrValue |= ((uint64_t)data) << 32;
+    applyGfxRptrValue();
+}
+
+void
+SDMAEngine::applyGfxRptrValue()
+{
+    // The driver programs RB_RPTR while the ring is disabled (e.g., in
+    // gfx_resume after a driver reload). Apply it to the queue so decoding
+    // restarts from the new read pointer rather than the stale one left by
+    // the previous driver instance, which would otherwise walk a full lap
+    // of the ring before reaching new packets.
+    if (!bits(gfxRbCntl, 0) && gfx.size()) {
+        gfx.rptr(gfxRptrValue % gfx.size());
+    }
 }
 
 void

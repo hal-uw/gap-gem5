@@ -524,6 +524,7 @@ class SDMAEngine : public DmaVirtDevice
     void setGfxSize(uint32_t data);
     void setGfxRptrValueLo(uint32_t data);
     void setGfxRptrValueHi(uint32_t data);
+    void applyGfxRptrValue();
     void setGfxWptrLo(uint32_t data);
     void setGfxWptrHi(uint32_t data);
     void setPageBaseLo(uint32_t data);
