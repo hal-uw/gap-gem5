@@ -502,11 +502,11 @@ dppInstImpl(SqDPPVals dppCtrl, int currLane, int rowNum, int rowOffset,
         newLane = (currLane - 1 + NumVecElemPerVecReg) % NumVecElemPerVecReg;
     } else if (dppCtrl == SQ_DPP_ROW_MIRROR) { // DPP_ROW_MIRROR
         localRowOffset = (15 - localRowOffset);
-        newLane = (rowNum | localRowOffset);
+        newLane = ((rowNum * ROW_SIZE) | localRowOffset);
     } else if (dppCtrl == SQ_DPP_ROW_HALF_MIRROR) { // DPP_ROW_HALF_MIRROR
-        localRowNum = (currLane & -0x7);
+        localRowNum = (currLane & ~0x7);
         localRowOffset = (currLane & 0x7);
-        localRowOffset = (7 - localRowNum);
+        localRowOffset = (7 - localRowOffset);
         newLane = (localRowNum | localRowOffset);
     } else if (dppCtrl == SQ_DPP_ROW_BCAST15) { // DPP_ROW_BCAST15
         count = 15;
