@@ -112,6 +112,10 @@ HWScheduler::registerNewQueue(uint64_t hostReadIndexPointer,
         basePointer, offset, hostReadIndexPointer, size, gfxVersion);
     AQLRingBuffer *aql_buf = new AQLRingBuffer(NUM_DMA_BUFS, hsaPP->name());
     if (rd_idx > 0) {
+        // A (re)mapped queue resumes at the MQD's read index: nothing before
+        // it is fetched again, nothing after it is skipped.
+        q_desc->readIndex = rd_idx;
+        q_desc->writeIndex = rd_idx;
         aql_buf->setRdIdx(rd_idx);
         aql_buf->setWrIdx(rd_idx);
         aql_buf->setDispIdx(rd_idx);
@@ -333,13 +337,14 @@ HWScheduler::write(Addr db_addr, uint64_t doorbell_reg)
         panic("Writing to a non-existing queue (db_offset %x)", db_addr);
     }
     uint32_t al_idx = dbMap[db_addr];
-    // Modify the write pointer
+    // Modify the write pointer. A doorbell carries the producer index only;
+    // the read index is where the packet processor has fetched up to. It
+    // used to be forced to doorbell_reg - 1 here, which assumes one new
+    // packet per doorbell and skips packets when one doorbell covers
+    // several (allowed by HSA, and what a replayed pending doorbell for a
+    // remapped queue does). A remapped queue's read index is now set from
+    // the MQD in registerNewQueue().
     activeList[al_idx].qDesc->writeIndex = doorbell_reg;
-    // If a queue is unmapped and remapped (common in full system) the qDesc
-    // gets reused. Keep the readIndex up to date so that when the HSA packet
-    // processor gets commands from host, the correct entry is read after
-    // remapping.
-    activeList[al_idx].qDesc->readIndex = doorbell_reg - 1;
     DPRINTF(HSAPacketProcessor, "q %d readIndex %d writeIndex %d\n", al_idx,
             activeList[al_idx].qDesc->readIndex,
             activeList[al_idx].qDesc->writeIndex);
