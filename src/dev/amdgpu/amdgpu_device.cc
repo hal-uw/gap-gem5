@@ -780,6 +780,19 @@ AMDGPUDevice::writeDoorbell(PacketPtr pkt, Addr offset)
         memcpy(pending_data, pkt->getPtr<uint8_t>(), pkt->getSize());
         pending_pkt->dataDynamic(pending_data);
 
+        // A doorbell write carries the queue's current write pointer, so
+        // only the newest one matters. Replace an older pending write for
+        // the same doorbell: emplace() alone keeps the old entry and drops
+        // the new one, losing every packet submitted after the first while
+        // the queue is unmapped (e.g. a CRIU-restored process ringing before
+        // its queues are mapped, or during an evict/restore cycle).
+        auto pending = pendingDoorbellPkts.find(offset);
+        if (pending != pendingDoorbellPkts.end()) {
+            DPRINTF(AMDGPUDevice, "Replacing pending doorbell %#lx\n",
+                    offset);
+            delete pending->second;
+            pendingDoorbellPkts.erase(pending);
+        }
         pendingDoorbellPkts.emplace(offset, pending_pkt);
     }
 }
