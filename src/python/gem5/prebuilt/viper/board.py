@@ -103,6 +103,18 @@ class ViperBoard(X86Board):
 
         self.gpus = gpus
 
+        # The system cache line size (used by the CPU caches and by DMA
+        # devices) follows the GPUs' line size, as in the GPU full-system
+        # configs, which use one --cacheline_size for both.
+        if gpus:
+            line_sizes = {gpu.get_cache_line_size() for gpu in gpus}
+            if len(line_sizes) != 1:
+                raise ValueError(
+                    f"All GPUs must use the same cache line size, got "
+                    f"{sorted(line_sizes)}"
+                )
+            self.cache_line_size = line_sizes.pop()
+
     @overrides(AbstractCacheHierarchy)
     def get_coherence_protocol(self):
         return CoherenceProtocol.GPU_VIPER
@@ -205,6 +217,13 @@ class ViperBoard(X86Board):
             "modprobe.blacklist=psmouse",
             # Tell linux to use MP table for PCI IRQs and not ACPI.
             "pci=noacpi",
+            # Do not use the TSC as clocksource. With KVM the guest TSC is
+            # the host TSC, which keeps counting host time while gem5
+            # simulates outside KVM (e.g., GPU work), so guest time would run
+            # ahead of simulated time and driver timeouts (SDMA job timeout,
+            # watchdogs) fire early. The kernel then keeps time from the
+            # simulated timer interrupts. The GPU FS configs do the same.
+            "tsc=unstable",
         ]
 
     def get_low_mem_ports(self) -> Sequence[Tuple[AddrRange, Port]]:

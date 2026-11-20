@@ -27,14 +27,21 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
+from typing import Optional
+
 from m5.objects import (
+    HBM3_MI300X_1x64,
     AMDGPUDevice,
     PciMemBar,
+    SrcClockDomain,
     SubSystem,
+    VoltageDomain,
 )
 
 from ....components.memory.abstract_memory_system import AbstractMemorySystem
+from ....components.memory.hbm import HighBandwidthMemory
 from ....prebuilt.viper.gpu_cache_hierarchy import ViperGPUCacheHierarchy
+from ....prebuilt.viper.viper_network import SimpleCrossbar
 from .viper_shader import ViperShader
 
 
@@ -88,7 +95,18 @@ class BaseViperGPU(SubSystem):
             pci_func=0, pci_dev=pci_dev, ipt_binary=ipt_binary
         )
 
+    def _cache_hierarchy_options(self) -> dict:
+        """Extra keyword arguments for ViperGPUCacheHierarchy."""
+        return {}
+
+    def get_cache_line_size(self) -> int:
+        return self._cache_line_size
+
     def setup_caches(self):
+        # The Shader sends one SQC invalidate per SQC at kernel launch, so its
+        # cu_per_sqc must match the number of SQCs built below.
+        self.shader.cu_per_sqc = self._cu_per_sqc
+
         # Make the cache hierarchy. This will create an independent RubySystem
         # class containing only the GPU caches with no network connection to
         # the CPU cache hierarchy.
@@ -106,6 +124,7 @@ class BaseViperGPU(SubSystem):
             cu_per_sqc=self._cu_per_sqc,
             cache_line_size=self._cache_line_size,
             shader=self.shader,
+            **self._cache_hierarchy_options(),
         )
 
     def set_shader(self, shader: ViperShader):
@@ -220,31 +239,74 @@ class MI210(BaseViperGPU):
         return driver_load_command
 
 
+# Validated single-XCD MI300X (gpu-microbenchmarks
+# configs/gem5/mi300x-validated.yaml, the GAP project's calibration against a
+# real MI300X; flag names in the comments). MI300X uses these values; MI355X
+# keeps the generic VIPER defaults.
+MI300X_GPU_CLOCK = "2100MHz"  # --gpu-clock (CUs, TLBs, TCP/SQC/scalar, TCC)
+MI300X_FABRIC_CLOCK = "1800MHz"  # --fabric-clock (network, directories/L3)
+MI300X_MEMORY_CLOCK = "1300MHz"  # --memory-clock (HBM controllers)
+# --sys-clock: the GPU device's own engines (SDMA, PM4, interrupt handler,
+# memory manager) and the GPU DMA controllers. Only the GPU device subtree
+# gets this domain: the board clock also drives the guest's timers, which
+# must stay consistent with the KVM CPU clock.
+MI300X_DEVICE_CLOCK = "1GHz"
+MI300X_L3_SIZE_MIB = 64  # --dgpu-l3-size, split over the directories
+
+
+def MI300XMemory() -> HighBandwidthMemory:
+    """GPU memory of the validated MI300X: 16 HBM3 channels (one directory
+    each), two pseudo channels per channel, 16 GiB.
+
+    --dgpu-mem-type HBM3_MI300X_1x64 --dgpu-num-dirs 16 --dgpu-mem-size 16GiB
+    --hbm-ctrl. The legacy config interleaves 128 B granules (one line):
+    address bit 7 selects the pseudo channel, bits 8-11 the channel.
+    """
+    return HighBandwidthMemory(
+        HBM3_MI300X_1x64,
+        16,
+        256,
+        size="16GiB",
+        pseudo_channel_interleaving_size=128,
+    )
+
+
 # Defaults to a single "XCD" (i.e., 1/8th of a full MI300X).
 class MI300X(BaseViperGPU):
+    # Apply the validated MI300X structure and parameters. Subclasses for
+    # other devices turn this off.
+    _validated_mi300x = True
+
     def __init__(
         self,
-        gpu_memory: AbstractMemorySystem,
-        num_cus: int = 40,
-        cu_per_sqc: int = 4,
-        tcp_size: str = "16KiB",
+        gpu_memory: Optional[AbstractMemorySystem] = None,
+        num_cus: int = 38,  # --num-compute-units
+        cu_per_sqc: int = 2,  # --cu-per-sqc
+        tcp_size: str = "32KiB",  # --tcp-size
         tcp_assoc: int = 16,
-        sqc_size: str = "32KiB",
+        sqc_size: str = "64KiB",  # --sqc-size
         sqc_assoc: int = 8,
-        scalar_size: str = "32KiB",
+        scalar_size: str = "16KiB",  # --scalar-size
         scalar_assoc: int = 8,
-        tcc_size: str = "256KiB",
-        tcc_assoc: int = 16,
-        tcc_count: int = 16,
-        cache_line_size: int = 64,
+        tcc_size: str = "256KiB",  # per TCC: --tcc-size 4MB / --num-tccs 16
+        tcc_assoc: int = 16,  # --tcc-assoc
+        tcc_count: int = 16,  # --num-tccs
+        cache_line_size: int = 128,  # --cacheline_size
         ipt_binary: str = "",
         debug: bool = False,
+        cu_per_scalar_cache: int = 2,  # --cu-per-scalar-cache
     ):
+        """
+        :param gpu_memory: GPU memory. Defaults to MI300XMemory().
+        """
+        if gpu_memory is None:
+            gpu_memory = MI300XMemory()
         super().__init__(
             gpu_memory=gpu_memory, ipt_binary=ipt_binary, debug=debug
         )
 
         self._cu_per_sqc = cu_per_sqc
+        self._cu_per_scalar_cache = cu_per_scalar_cache
         self._tcp_size = tcp_size
         self._tcp_assoc = tcp_assoc
         self._sqc_size = sqc_size
@@ -264,15 +326,26 @@ class MI300X(BaseViperGPU):
         self.device.BAR5 = PciMemBar(size="2MiB")
 
         # Setup device-specific address ranges for various SoC components.
+        if self._validated_mi300x:
+            # Legacy TLB hierarchy (GPUTLBConfig): per-CU vector L1 TLBs,
+            # SQC and scalar TLBs shared like the caches, and one L2 TLB that
+            # is the last level and owns the page table walker.
+            tlb_options = dict(
+                l3_tlb=False,
+                cu_per_sqc_tlb=cu_per_sqc,
+                cu_per_scalar_tlb=cu_per_scalar_cache,
+            )
+        else:
+            tlb_options = {}
         shader = ViperShader(
             self._my_id,
             num_cus,
             cache_line_size,
             self.device,
             gpu_memory.get_size(),
+            **tlb_options,
         )
         self.set_shader(shader)
-        self.setup_caches()
 
         num_sdmas = 16
         sdma_bases = [
@@ -321,6 +394,152 @@ class MI300X(BaseViperGPU):
 
         self.device.pm4_pkt_procs = shader._create_pm4s(pm4_starts, pm4_ends)
 
+        # The cache hierarchy gives every GPU DMA port a DMA controller, so
+        # create it after the SDMA engines (their page table walkers).
+        self.setup_caches()
+        if self._validated_mi300x:
+            self._apply_validated_parameters()
+
+    def _cache_hierarchy_options(self) -> dict:
+        if not self._validated_mi300x:
+            return {}
+        gpu_hz = float(MI300X_GPU_CLOCK.rstrip("MHz"))
+        fabric_hz = float(MI300X_FABRIC_CLOCK.rstrip("MHz"))
+        return dict(
+            cu_per_scalar_cache=self._cu_per_scalar_cache,
+            fabric_clock=MI300X_FABRIC_CLOCK,
+            gpu_clock=MI300X_GPU_CLOCK,
+            # --gpu-topology Crossbar (set by mi300.py), --link-width-bits
+            # 1024, --gpu-dir-link-width-bits 512; XCD-side links scaled by
+            # gpu/fabric clock as in DisjointNetwork.connectGPU.
+            network_factory=lambda ruby_system: SimpleCrossbar(
+                ruby_system,
+                link_width_bytes=1024 // 8,
+                dir_link_width_bytes=512 // 8,
+                xcd_clock_ratio=gpu_hz / fabric_hz,
+            ),
+            num_virtual_networks=11,  # Disjoint_VIPER
+        )
+
+    def _apply_validated_parameters(self):
+        """Set the validated MI300X parameters on the created objects."""
+        num_cus = len(self.shader.CUs)
+        gpu_clk = SrcClockDomain(
+            clock=MI300X_GPU_CLOCK, voltage_domain=VoltageDomain()
+        )
+
+        # CU harvesting: an MI300X XCC has 40 CUs (4 SEs x 10) with 2 fused
+        # off; the driver reads the fused mask per SE. Which CUs are fused
+        # differs per chip; CU 9 of SE0 and SE2 is assumed.
+        if num_cus == 38:
+            self.device.inactive_cus = [1 << 9, 0, 1 << 9, 0]
+
+        # Shader, CUs, dispatcher and all TLBs run on the GPU clock.
+        self.shader.clk_domain = gpu_clk
+
+        # Device engines and GPU DMA controllers on the system clock.
+        device_clk = SrcClockDomain(
+            clock=MI300X_DEVICE_CLOCK, voltage_domain=VoltageDomain()
+        )
+        self.device.clk_domain = device_clk
+        for ctrl in self.gpu_caches._dma_controllers:
+            ctrl.clk_domain = device_clk
+        for cu in self.shader.CUs:
+            cu.num_scalar_cores = 4  # --scalar-cores-per-cu
+            cu.scalar_issue_period = 4  # --scalar-issue-period
+            cu.valu_dual_issue = True  # --valu-dual-issue
+            cu.lds_req_latency = 55  # --lds-req-latency
+            cu.mem_req_latency = 62  # --mem-req-latency
+            cu.mem_resp_latency = 62  # --mem-resp-latency
+            cu.scalar_mem_req_latency = 40  # --scalar-mem-req-latency
+            cu.scalar_mem_resp_latency = 0  # legacy default
+            cu.max_cu_tokens = 160  # --max-cu-tokens
+            cu.sqc_bus_latency = 1  # legacy default
+            cu.coalescer_to_vrf_bus_width = 32  # --glbmem-rd-bus-width
+            cu.vrf_to_coalescer_bus_width = 32  # --glbmem-wr-bus-width
+            for srf in cu.scalar_register_file:
+                srf.num_regs = 3200  # --sreg-file-size
+            for pool in cu.register_manager.srf_pool_managers:
+                pool.pool_size = 3200
+
+        # TLBs: --L1TLBentries/assoc 32/32, --L1AccessLatency 1,
+        # --L1MissLatency 1; --L2TLBentries/assoc 256/64,
+        # --L2AccessLatency 100, --L2MissLatency 15.
+        l1_tlbs = [cu.l1_tlb for cu in self.shader.CUs]
+        l1_tlbs += list(self.shader.sqc_tlb) + list(self.shader.scalar_tlb)
+        for tlb in l1_tlbs:
+            tlb.size = 32
+            tlb.assoc = 32
+            tlb.hitLatency = 1
+            tlb.missLatency1 = 1
+            tlb.missLatency2 = 1
+        l2_tlb = self.shader.l2_tlb
+        l2_tlb.size = 256
+        l2_tlb.assoc = 64
+        l2_tlb.hitLatency = 100
+        l2_tlb.missLatency1 = 15
+        l2_tlb.missLatency2 = 15
+
+        ruby = self.gpu_caches.ruby_gpu
+
+        # Vector L1 (TCP)
+        for tcp in ruby.tcp_controllers:
+            tcp.L1cache.tagAccessLatency = 1  # --TCP_latency
+            tcp.L1cache.dataAccessLatency = 1
+            tcp.issue_latency = 25  # --tcp-issue-latency
+            tcp.mandatory_queue_latency = 1  # --mandatory_queue_latency
+            tcp.number_of_TBEs = 2560
+            tcp.coalescer.max_coalesces_per_cycle = 10
+            tcp.coalescer.deadlock_threshold = 2000000
+
+        # Instruction (SQC) and scalar caches
+        for ctrl in list(ruby.sqc_controllers) + list(
+            ruby.scalar_controllers
+        ):
+            ctrl.issue_latency = 80
+            ctrl.sequencer.deadlock_threshold = 2000000
+
+        # L2 (TCC)
+        for tcc in ruby.tcc_controllers:
+            tcc.WB = True  # --WB_L2
+            tcc.l2_request_latency = 101  # --gpu-to-dir-latency
+            tcc.l2_response_latency = 15  # --TCC_latency
+            tcc.glc_atomic_latency = 302  # --glc-atomic-latency
+            tcc.number_of_TBEs = 2560 * num_cus
+            tcc.L2cache.tagAccessLatency = 1  # --tcc-tag-access-latency
+            tcc.L2cache.dataAccessLatency = 1  # --tcc-data-access-latency
+            tcc.L2cache.tagArrayBanks = 1  # --tcc-num-banks
+            tcc.L2cache.dataArrayBanks = 1
+            tcc.L2cache.atomicLatency = 42  # --atomic-alu-latency
+            # --tcc-num-atomic-alus 48, split over the TCCs
+            tcc.L2cache.atomicALUs = 48 // len(ruby.tcc_controllers)
+
+        # Directories with the Infinity Cache as a memory-side L3
+        dirs = list(ruby.directory_controllers)
+        for d in dirs:
+            d.response_latency = 30
+            d.L2isWB = True  # --WB_L2
+            d.l3AllocOnRead = True  # --infinity-cache
+            d.l3KeepOnReadHit = True
+            d.to_memory_controller_latency = 96  # --dir-to-mem-ctrl-latency
+            d.L3CacheMemory.size = f"{MI300X_L3_SIZE_MIB // len(dirs)}MiB"
+            d.L3CacheMemory.assoc = 16
+            d.L3CacheMemory.dataAccessLatency = 20
+            d.L3CacheMemory.tagAccessLatency = 15
+            d.l3_hit_latency = 20
+
+        # HBM controllers (--hbm-ctrl): memory clock, 128-entry queues.
+        mem_clk = SrcClockDomain(
+            clock=MI300X_MEMORY_CLOCK, voltage_domain=VoltageDomain()
+        )
+        for ctrl in self.memory.get_memory_controllers():
+            ctrl.clk_domain = mem_clk
+            ctrl.disable_sanity_check = False
+            if hasattr(ctrl, "dram_2"):
+                for intf in (ctrl.dram, ctrl.dram_2):
+                    intf.read_buffer_size = 128
+                    intf.write_buffer_size = 128
+
     def get_driver_command(self):
         driver_load_command = (
             "export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH\n"
@@ -349,6 +568,9 @@ class MI300X(BaseViperGPU):
 
 # Defaults to a single "XCD" (i.e., 1/8th of a full MI355X).
 class MI355X(MI300X):
+    # Not calibrated: keep the generic VIPER structure and parameters.
+    _validated_mi300x = False
+
     def __init__(
         self,
         gpu_memory: AbstractMemorySystem,
