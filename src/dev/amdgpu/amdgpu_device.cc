@@ -796,6 +796,11 @@ AMDGPUDevice::writeMMIO(PacketPtr pkt, Addr offset)
         return;
     }
 
+    if (gfx_version == GfxVersion::gfx942 &&
+        gpuvm.writeMMHUBContextGfx940(offset, pkt->getLE<uint32_t>())) {
+        return;
+    }
+
     // Check SDMA functions first, then fallback to MMIO ranges.
     for (int idx = 0; idx < sdmaIds.size(); ++idx) {
         if (sdmaMmios[idx].contains(offset)) {

@@ -239,6 +239,14 @@ class AMDGPUVM : public Serializable
     void writeMMIO(PacketPtr pkt, Addr offset);
 
     /**
+     * gfx942 MMHUB (1.8) VM_CONTEXTn page-table registers. The driver
+     * programs them for every VMID it hands to an amdgpu (non-KFD) job,
+     * e.g. through SRBM_WRITE in an SDMA ring's VM flush. Returns true if
+     * the BAR offset is one of them.
+     */
+    bool writeMMHUBContextGfx940(Addr offset, uint32_t data);
+
+    /**
      * Methods for resolving apertures
      */
     bool

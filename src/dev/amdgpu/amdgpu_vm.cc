@@ -272,6 +272,55 @@ AMDGPUVM::writeMMIO(PacketPtr pkt, Addr offset)
     }
 }
 
+bool
+AMDGPUVM::writeMMHUBContextGfx940(Addr offset, uint32_t data)
+{
+    // MMHUB 1.8 instances (one per AID) and their segment-0 base, in dwords,
+    // from the MI300X IP discovery table; register dword offsets from
+    // mmhub_1_8_0_offset.h. Each VMID has a LO/HI pair for each register.
+    constexpr int numInstances = 4;
+    constexpr Addr instanceStride = 0x80000; // bytes
+    constexpr Addr seg0Base = 0x18000;       // dwords, instance 0
+    constexpr Addr ptBaseLo = 0x0c0b; // VM_CONTEXT0_PAGE_TABLE_BASE_ADDR_LO32
+    constexpr Addr ptStartLo = 0x0c2b; // VM_CONTEXT0_PAGE_TABLE_START_ADDR_LO32
+    constexpr Addr ptEndLo = 0x0c4b;   // VM_CONTEXT0_PAGE_TABLE_END_ADDR_LO32
+    constexpr Addr numVmids = 16;
+
+    if (offset >= numInstances * instanceStride) {
+        return false;
+    }
+    Addr reg = (offset % instanceStride) / 4;
+    if (reg < seg0Base + ptBaseLo || reg >= seg0Base + ptEndLo + 2 * numVmids) {
+        return false;
+    }
+    reg -= seg0Base;
+
+    Addr first = reg < ptStartLo ? ptBaseLo
+                 : reg < ptEndLo ? ptStartLo
+                                 : ptEndLo;
+    uint16_t vmid = (reg - first) / 2;
+    bool hi = (reg - first) % 2;
+
+    // VMID 0 keeps using the GFX hub registers (writeMMIOGfx940).
+    if (vmid == 0 || vmid >= vmContexts.size()) {
+        return true;
+    }
+
+    DPRINTF(AMDGPUDevice, "MMHUB VMID %d page table %s %s = %#x\n", vmid,
+            first == ptBaseLo ? "base" : first == ptStartLo ? "start" : "end",
+            hi ? "hi" : "lo", data);
+
+    // Stored as written, the same encoding PM4 MAP_PROCESS uses.
+    if (first == ptBaseLo) {
+        hi ? setPageTableBaseH(vmid, data) : setPageTableBaseL(vmid, data);
+    } else if (first == ptStartLo) {
+        hi ? setPageTableStartH(vmid, data) : setPageTableStartL(vmid, data);
+    } else {
+        hi ? setPageTableEndH(vmid, data) : setPageTableEndL(vmid, data);
+    }
+    return true;
+}
+
 void
 AMDGPUVM::registerTLB(VegaISA::GpuTLB *tlb)
 {
