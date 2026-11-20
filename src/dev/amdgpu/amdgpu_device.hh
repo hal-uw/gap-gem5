@@ -32,7 +32,9 @@
 #ifndef __DEV_AMDGPU_AMDGPU_DEVICE_HH__
 #define __DEV_AMDGPU_AMDGPU_DEVICE_HH__
 
+#include <array>
 #include <map>
+#include <vector>
 
 #include "base/bitunion.hh"
 #include "dev/amdgpu/amdgpu_defines.hh"
@@ -172,6 +174,22 @@ class AMDGPUDevice : public PciEndpoint
     GfxVersion gfx_version = GfxVersion::gfx900;
     const int gpuId;
     Addr vramSize;
+
+    /**
+     * CU harvesting (gfx942). The driver counts active CUs per XCC by
+     * selecting each SE through GRBM_GFX_INDEX and reading
+     * CC_GC_SHADER_ARRAY_CONFIG (fused-off CUs) OR'd with
+     * GC_USER_SHADER_ARRAY_CONFIG (CUs disabled by software).
+     */
+    static constexpr int harvestMaxXCCs = 8;
+    static constexpr int harvestMaxSEs = 16;
+    std::vector<uint32_t> inactiveCUs;
+    std::array<uint32_t, harvestMaxXCCs> grbmGfxIndex{};
+    std::array<std::array<uint32_t, harvestMaxSEs>, harvestMaxXCCs>
+        userShaderArrayConfig{};
+
+    bool harvestReadMMIO(PacketPtr pkt, Addr offset);
+    bool harvestWriteMMIO(PacketPtr pkt, Addr offset);
 
   protected:
     /**

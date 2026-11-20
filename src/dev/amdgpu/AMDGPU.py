@@ -84,6 +84,13 @@ class AMDGPUDevice(PciEndpoint):
     ExpansionROM = 0
 
     ipt_binary = Param.String("", "IP table dump from hardware")
+    inactive_cus = VectorParam.UInt32(
+        [],
+        "gfx942 only: fused-off (harvested) CU bitmap per shader engine, "
+        "applied to every XCC and returned in the INACTIVE_CUS field of "
+        "CC_GC_SHADER_ARRAY_CONFIG. Bit n disables CU n of the SE. Empty "
+        "means all CUs are active.",
+    )
     checkpoint_before_mmios = Param.Bool(
         False, "Take a checkpoint before the device begins sending MMIOs"
     )

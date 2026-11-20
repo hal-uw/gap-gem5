@@ -63,7 +63,8 @@ AMDGPUDevice::AMDGPUDevice(const AMDGPUDeviceParams &p)
       _lastVMID(0),
       deviceMem(name() + ".deviceMem", p.memories, false, "", false),
       system(p.system),
-      gpuId(p.gpu_id)
+      gpuId(p.gpu_id),
+      inactiveCUs(p.inactive_cus)
 {
     uint64_t vram_size = 0;
 
@@ -512,6 +513,105 @@ AMDGPUDevice::readDoorbell(PacketPtr pkt, Addr offset)
     mmioReader.readFromTrace(pkt, DOORBELL_BAR, offset);
 }
 
+namespace
+{
+
+// gfx942 (GC 9.4.3) register byte offsets within one XCC's GC block, from
+// the GC segment bases in the IP discovery table (seg0 0x2000, seg1 0xa000
+// dwords for XCC 0) and gc_9_4_3_offset.h. Each XCC's GC block is
+// gfx942XccStride bytes after the previous one.
+constexpr Addr gfx942XccStride = 0x40000;
+constexpr Addr gfx942GcSeg0 = 0x2000 << 2;
+constexpr Addr gfx942GcSeg1 = 0xa000 << 2;
+constexpr Addr gfx942CcGcShaderArrayConfig = gfx942GcSeg0 + (0x026f << 2);
+constexpr Addr gfx942GcUserShaderArrayConfig = gfx942GcSeg0 + (0x0270 << 2);
+constexpr Addr gfx942GrbmGfxIndex = gfx942GcSeg1 + (0x2200 << 2);
+
+constexpr uint32_t inactiveCusShift = 16; // INACTIVE_CUS, bits 31:16
+constexpr uint32_t inactiveCusMask = 0xffff0000;
+constexpr uint32_t grbmSeIndexShift = 16; // SE_INDEX, bits 23:16
+constexpr uint32_t grbmSeIndexMask = 0xff;
+constexpr uint32_t grbmSeBroadcast = 1u << 31;
+
+} // anonymous namespace
+
+/**
+ * Model the CU harvest registers of every XCC. Returns true if the read was
+ * handled. GC 9.4.3 has one SH per SE, so only the SE index is tracked.
+ */
+bool
+AMDGPUDevice::harvestReadMMIO(PacketPtr pkt, Addr offset)
+{
+    if (gfx_version != GfxVersion::gfx942) {
+        return false;
+    }
+
+    int xcc = offset / gfx942XccStride;
+    Addr reg = offset % gfx942XccStride;
+    if (xcc >= harvestMaxXCCs) {
+        return false;
+    }
+
+    uint32_t se = (grbmGfxIndex[xcc] >> grbmSeIndexShift) & grbmSeIndexMask;
+    if (se >= harvestMaxSEs) {
+        se = 0;
+    }
+
+    if (reg == gfx942CcGcShaderArrayConfig) {
+        uint32_t fused = se < inactiveCUs.size() ? inactiveCUs[se] : 0;
+        pkt->setLE<uint32_t>((fused << inactiveCusShift) & inactiveCusMask);
+        DPRINTF(AMDGPUDevice, "XCC%d SE%d CC_GC_SHADER_ARRAY_CONFIG -> %#x\n",
+                xcc, se, pkt->getLE<uint32_t>());
+        return true;
+    } else if (reg == gfx942GcUserShaderArrayConfig) {
+        pkt->setLE<uint32_t>(userShaderArrayConfig[xcc][se]);
+        return true;
+    } else if (reg == gfx942GrbmGfxIndex) {
+        pkt->setLE<uint32_t>(grbmGfxIndex[xcc]);
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Record the SE select and software CU disables. Returns true if the write
+ * needs no further handling.
+ */
+bool
+AMDGPUDevice::harvestWriteMMIO(PacketPtr pkt, Addr offset)
+{
+    if (gfx_version != GfxVersion::gfx942) {
+        return false;
+    }
+
+    int xcc = offset / gfx942XccStride;
+    Addr reg = offset % gfx942XccStride;
+    if (xcc >= harvestMaxXCCs) {
+        return false;
+    }
+
+    if (reg == gfx942GrbmGfxIndex) {
+        grbmGfxIndex[xcc] = pkt->getLE<uint32_t>();
+        // Not consumed: other GFX models may also look at this write.
+        return false;
+    } else if (reg == gfx942GcUserShaderArrayConfig) {
+        uint32_t data = pkt->getLE<uint32_t>();
+        if (grbmGfxIndex[xcc] & grbmSeBroadcast) {
+            userShaderArrayConfig[xcc].fill(data);
+        } else {
+            uint32_t se =
+                (grbmGfxIndex[xcc] >> grbmSeIndexShift) & grbmSeIndexMask;
+            if (se < harvestMaxSEs) {
+                userShaderArrayConfig[xcc][se] = data;
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
 void
 AMDGPUDevice::readMMIO(PacketPtr pkt, Addr offset)
 {
@@ -522,6 +622,10 @@ AMDGPUDevice::readMMIO(PacketPtr pkt, Addr offset)
     // few more dynamic MMIOs.
     DPRINTF(AMDGPUDevice, "Read MMIO %#lx\n", offset);
     mmioReader.readFromTrace(pkt, MMIO_BAR, offset);
+
+    if (harvestReadMMIO(pkt, offset)) {
+        return;
+    }
 
     if (aperture == gpuvm.getMMIORange(NBIO_MMIO_RANGE)) {
         DPRINTF(AMDGPUDevice, "NBIO base\n");
@@ -687,6 +791,10 @@ AMDGPUDevice::writeMMIO(PacketPtr pkt, Addr offset)
     Addr aperture_offset = offset - aperture.start();
 
     DPRINTF(AMDGPUDevice, "Wrote MMIO %#lx\n", offset);
+
+    if (harvestWriteMMIO(pkt, offset)) {
+        return;
+    }
 
     // Check SDMA functions first, then fallback to MMIO ranges.
     for (int idx = 0; idx < sdmaIds.size(); ++idx) {
