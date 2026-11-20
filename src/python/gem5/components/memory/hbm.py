@@ -75,6 +75,7 @@ class HighBandwidthMemory(ChanneledMemory):
         interleaving_size: Union[int, str],
         size: Optional[str] = None,
         addr_mapping: Optional[str] = None,
+        pseudo_channel_interleaving_size: Optional[int] = None,
     ) -> None:
         """
         :param dram_interface_class: The DRAM interface type to create with
@@ -90,6 +91,17 @@ class HighBandwidthMemory(ChanneledMemory):
         :param interleaving_size: Defines the interleaving size of the multi-
                                   channel memory system. By default, it is
                                   equivalent to the atom size, i.e., 64.
+        :param pseudo_channel_interleaving_size: Bytes sent to one pseudo
+                                  channel before switching to the other one
+                                  of the same channel. The pseudo channel is
+                                  selected by address bit
+                                  log2(pseudo_channel_interleaving_size), which
+                                  must lie below the channel bits
+                                  (log2(interleaving_size) and up). With a
+                                  cache line larger than 64 B it must be at
+                                  least the line size, else every line maps to
+                                  the first pseudo channel. If ``None``, the
+                                  pseudo channel is selected by bit 6 (64 B).
         """
         super().__init__(
             dram_interface_class,
@@ -100,6 +112,12 @@ class HighBandwidthMemory(ChanneledMemory):
         )
 
         _num_channels = _try_convert(num_channels, int)
+
+        self._pseudo_channel_intlv_size = (
+            None
+            if pseudo_channel_interleaving_size is None
+            else _try_convert(pseudo_channel_interleaving_size, int)
+        )
 
     @overrides(ChanneledMemory)
     def _create_mem_interfaces_controller(self):
@@ -148,8 +166,17 @@ class HighBandwidthMemory(ChanneledMemory):
         for ib in range(int(intlv_bits)):
             mask_list.append(1 << int(ib + intlv_low_bit))
 
-        # for interleaving across pseudo channels (at 64B currently)
-        mask_list.insert(0, 1 << 6)
+        # Interleave across the two pseudo channels of each channel.
+        if self._pseudo_channel_intlv_size is None:
+            pseudo_channel_bit = 6
+        else:
+            pseudo_channel_bit = int(log(self._pseudo_channel_intlv_size, 2))
+            if pseudo_channel_bit >= intlv_low_bit:
+                raise ValueError(
+                    "pseudo_channel_interleaving_size must be smaller than "
+                    "the channel interleaving granularity"
+                )
+        mask_list.insert(0, 1 << pseudo_channel_bit)
         for i, ctrl in enumerate(self.mem_ctrl):
             ctrl.dram.range = AddrRange(
                 start=self._mem_ranges[0].start,

@@ -187,7 +187,11 @@ class ChanneledMemory(AbstractMemorySystem):
 
     @overrides(AbstractMemorySystem)
     def incorporate_memory(self, board: AbstractBoard) -> None:
-        if self._intlv_size < int(board.get_cache_line_size()):
+        # Interleaving only matters with more than one channel: a line must
+        # not be split across channels.
+        if self._num_channels > 1 and self._intlv_size < int(
+            board.get_cache_line_size()
+        ):
             raise ValueError(
                 "Memory interleaving size can not be smaller than"
                 " board's cache line size.\nBoard's cache line size: "
