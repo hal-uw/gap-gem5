@@ -477,6 +477,19 @@ PM4PacketProcessor::processMQD(PM4MapQueues *pkt, PM4Queue *q, Addr addr,
             mqd->mqdBase, mqd->hqd_active, mqd->hqd_vmid, mqd->base, mqd->rptr,
             mqd->aqlRptr);
 
+    // The CP loads CP_MQD_BASE_ADDR from the MAP_QUEUES packet and saves the
+    // queue state there on unmap/preemption; the cp_mqd_base_addr field in
+    // the MQD contents is not used for that. The two differ for MQDs the
+    // driver did not build in place, e.g. queues restored by CRIU, whose MQD
+    // contents (including that field) are copied from a checkpoint taken on
+    // another machine.
+    if (mqd->mqdBase != pkt->mqdAddr) {
+        DPRINTF(PM4PacketProcessor,
+                "MQD base field %#lx differs from MAP_QUEUES mqd_addr %#lx; "
+                "using mqd_addr\n", mqd->mqdBase, pkt->mqdAddr);
+    }
+    mqd->mqdBase = pkt->mqdAddr;
+
     Addr offset = mqd->doorbell & 0x1ffffffc;
     newQueue(mqd, offset, pkt);
     PM4Queue *new_q = queuesMap[offset];
