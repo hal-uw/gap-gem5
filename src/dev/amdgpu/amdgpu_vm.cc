@@ -525,7 +525,8 @@ AMDGPUVM::UserTranslationGen::translate(Range &range) const
     Fault fault = walker->startFunctional(base, paddr, logBytes,
                                           BaseMMU::Mode::Read, system_bit);
     if (fault != NoFault) {
-        fatal("User translation fault");
+        fatal("User translation fault: vmid %d vaddr %#lx (page table base "
+              "%#lx start %#lx)", vmid, range.vaddr, base, start);
     }
 
     // GPU page size is variable. Use logBytes to determine size.
