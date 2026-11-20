@@ -122,10 +122,14 @@ AMDGPUNbio::readMMIO(PacketPtr pkt, Addr offset)
             pkt->setLE<uint32_t>(0x1);
             break;
         case MI300X_EPF0_STRAP0:
-            // This contains a revision ID for the chip. It is required for
-            // MI300X to see the GFX target as gfx942 instead of gfx941.
+            // STRAP_ATI_REV_ID: the chip revision, reported to user space
+            // as the ASIC_REVISION field of the KFD node capability. MI300X
+            // hardware reports 1. Older drivers need rev_id >= 1 to select
+            // gfx942 instead of gfx941; newer drivers always pick gfx942
+            // for GC 9.4.3. A different value makes CRIU's capability check
+            // reject checkpoints taken on real MI300X hardware.
             if (gpuDevice->getGfxVersion() == GfxVersion::gfx942) {
-                pkt->setLE<uint32_t>(2 << 24);
+                pkt->setLE<uint32_t>(1 << 24);
             } else {
                 pkt->setLE<uint32_t>(0);
             }
