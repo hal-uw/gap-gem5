@@ -97,6 +97,8 @@ class ViperCPUCacheHierarchy(AbstractRubyCacheHierarchy):
 
     @overrides(AbstractCacheHierarchy)
     def incorporate_cache(self, board: ViperBoard) -> None:
+        # Ruby's line size must match the caches built below.
+        self.ruby_system.block_size_bytes = board.get_cache_line_size()
         requires(coherence_protocol_required=CoherenceProtocol.GPU_VIPER)
 
         # Ruby networks for CPU

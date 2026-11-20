@@ -27,7 +27,10 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-from typing import List
+from typing import (
+    List,
+    Optional,
+)
 
 from m5.objects import (
     AMDGPUDevice,
@@ -61,10 +64,19 @@ from m5.params import AddrRange
 
 
 class ViperCU(ComputeUnit):
-    def __init__(self, cu_id: int, device: AMDGPUDevice):
-        """ComputeUnit object of a gfx9-like compute unit."""
+    def __init__(
+        self, cu_id: int, device: AMDGPUDevice, private_inst_tlbs: bool = True
+    ):
+        """ComputeUnit object of a gfx9-like compute unit.
+
+        :param private_inst_tlbs: Create a private instruction (SQC) TLB and
+            scalar data TLB in this CU. If False, the shader connects the
+            CU's sqc_tlb_port and scalar_tlb_port to TLBs shared by several
+            CUs.
+        """
         super().__init__()
         self._device = device
+        self._private_inst_tlbs = private_inst_tlbs
 
         self.cu_id = cu_id
 
@@ -129,10 +141,15 @@ class ViperCU(ComputeUnit):
             maxOutstandingReqs=64,
         )
 
-        self.l1_coalescer = VegaTLBCoalescer(tlb_level=1)
+        self.l1_coalescer = VegaTLBCoalescer(
+            tlb_level=1, downstream_tlb=self.l1_tlb
+        )
 
         self.translation_port = self.l1_coalescer.cpu_side_ports
         self.l1_coalescer.mem_side_ports = self.l1_tlb.cpu_side_ports
+
+        if not self._private_inst_tlbs:
+            return
 
         # Scalar memory TLB
         self.scalar_tlb = VegaGPUTLB(
@@ -145,7 +162,9 @@ class ViperCU(ComputeUnit):
             maxOutstandingReqs=64,
         )
 
-        self.scalar_coalescer = VegaTLBCoalescer(tlb_level=1)
+        self.scalar_coalescer = VegaTLBCoalescer(
+            tlb_level=1, downstream_tlb=self.scalar_tlb
+        )
 
         self.scalar_tlb_port = self.scalar_coalescer.cpu_side_ports
         self.scalar_coalescer.mem_side_ports = self.scalar_tlb.cpu_side_ports
@@ -161,17 +180,34 @@ class ViperCU(ComputeUnit):
             maxOutstandingReqs=64,
         )
 
-        self.sqc_coalescer = VegaTLBCoalescer(tlb_level=1)
+        self.sqc_coalescer = VegaTLBCoalescer(
+            tlb_level=1, downstream_tlb=self.sqc_tlb
+        )
 
         self.sqc_tlb_port = self.sqc_coalescer.cpu_side_ports
         self.sqc_coalescer.mem_side_ports = self.sqc_tlb.cpu_side_ports
 
     def get_tlb_ports(self):
+        if not self._private_inst_tlbs:
+            return [self.l1_tlb.mem_side_ports]
         return [
             self.l1_tlb.mem_side_ports,
             self.sqc_tlb.mem_side_ports,
             self.scalar_tlb.mem_side_ports,
         ]
+
+
+def _viper_l1_tlb(device: AMDGPUDevice) -> VegaGPUTLB:
+    """An L1 TLB with the same defaults as the per-CU TLBs."""
+    return VegaGPUTLB(
+        gpu_device=device,
+        size=64,
+        assoc=64,
+        hitLatency=1,
+        missLatency1=750,
+        missLatency2=750,
+        maxOutstandingReqs=64,
+    )
 
 
 class ViperShader(Shader):
@@ -182,12 +218,32 @@ class ViperShader(Shader):
         cache_line_size: int,
         device: AMDGPUDevice,
         vram_size: int,
+        l3_tlb: bool = True,
+        cu_per_sqc_tlb: Optional[int] = None,
+        cu_per_scalar_tlb: Optional[int] = None,
     ):
         """
         The shader defines something the represents a single software visible
         GPU (e.g., a graphics card, a chiplet on a GPU, etc.).
+
+        :param l3_tlb: Put an L3 TLB behind the shared L2 TLB. If False, the
+            L2 TLB is the last level and owns the page table walker.
+        :param cu_per_sqc_tlb: If set, one instruction (SQC) TLB is shared by
+            this many CUs instead of one private TLB per CU. Must be set
+            together with cu_per_scalar_tlb.
+        :param cu_per_scalar_tlb: If set, one scalar data TLB is shared by
+            this many CUs instead of one private TLB per CU.
         """
         super().__init__()
+
+        if (cu_per_sqc_tlb is None) != (cu_per_scalar_tlb is None):
+            raise ValueError(
+                "cu_per_sqc_tlb and cu_per_scalar_tlb must be set together"
+            )
+        self._l3_tlb = l3_tlb
+        self._cu_per_sqc_tlb = cu_per_sqc_tlb
+        self._cu_per_scalar_tlb = cu_per_scalar_tlb
+        private_inst_tlbs = cu_per_sqc_tlb is None
 
         self._shader_id = shader_id
         self._cache_line_size = cache_line_size
@@ -211,7 +267,10 @@ class ViperShader(Shader):
         self.impl_kern_end_rel = False
 
         # Attach compute units to GPU
-        self.CUs = [ViperCU(idx, device) for idx in range(num_cus)]
+        self.CUs = [
+            ViperCU(idx, device, private_inst_tlbs)
+            for idx in range(num_cus)
+        ]
 
         self._create_tlbs(device)
 
@@ -334,8 +393,55 @@ class ViperShader(Shader):
     def get_gpu_dma_ports(self):
         return self._gpu_dma_ports
 
+    def _create_shared_inst_tlbs(self, device: AMDGPUDevice):
+        """Create the SQC and scalar TLBs shared by groups of CUs and connect
+        each CU's ports to its group's coalescer. Returns the TLBs' memory
+        side ports (to connect to the L2 TLB)."""
+        num_cus = len(self.CUs)
+        for per in (self._cu_per_sqc_tlb, self._cu_per_scalar_tlb):
+            if num_cus % per != 0:
+                raise ValueError(
+                    f"{num_cus} CUs cannot be split in groups of {per}"
+                )
+
+        num_sqc_tlbs = num_cus // self._cu_per_sqc_tlb
+        num_scalar_tlbs = num_cus // self._cu_per_scalar_tlb
+        self.sqc_tlb = [_viper_l1_tlb(device) for _ in range(num_sqc_tlbs)]
+        self.sqc_coalescer = [
+            VegaTLBCoalescer(tlb_level=1, downstream_tlb=tlb)
+            for tlb in self.sqc_tlb
+        ]
+        self.scalar_tlb = [
+            _viper_l1_tlb(device) for _ in range(num_scalar_tlbs)
+        ]
+        self.scalar_coalescer = [
+            VegaTLBCoalescer(tlb_level=1, downstream_tlb=tlb)
+            for tlb in self.scalar_tlb
+        ]
+
+        for i in range(num_sqc_tlbs):
+            self.sqc_coalescer[i].mem_side_ports = self.sqc_tlb[
+                i
+            ].cpu_side_ports
+        for i in range(num_scalar_tlbs):
+            self.scalar_coalescer[i].mem_side_ports = self.scalar_tlb[
+                i
+            ].cpu_side_ports
+
+        for idx, cu in enumerate(self.CUs):
+            cu.sqc_tlb_port = self.sqc_coalescer[
+                idx // self._cu_per_sqc_tlb
+            ].cpu_side_ports
+            cu.scalar_tlb_port = self.scalar_coalescer[
+                idx // self._cu_per_scalar_tlb
+            ].cpu_side_ports
+
+        return [tlb.mem_side_ports for tlb in self.sqc_tlb] + [
+            tlb.mem_side_ports for tlb in self.scalar_tlb
+        ]
+
     def _create_tlbs(self, device: AMDGPUDevice):
-        """Connect per-CU TLBs to the L2/L3 TLBs"""
+        """Connect the L1 TLBs to the L2 TLB (and the L3 TLB, if any)"""
         self.l2_tlb = VegaGPUTLB(
             gpu_device=device,
             size=4096,
@@ -346,7 +452,25 @@ class ViperShader(Shader):
             maxOutstandingReqs=64,
         )
 
-        self.l2_coalescer = VegaTLBCoalescer(tlb_level=2)
+        # Each coalescer gets a handle to the TLB it feeds; the last-level
+        # coalescer reads that TLB's line-coalescing predictor.
+        self.l2_coalescer = VegaTLBCoalescer(
+            tlb_level=2, downstream_tlb=self.l2_tlb
+        )
+
+        # Port flow: [L1s] -> L2 coalescer -> L2 tlb [-> L3 coalescer -> L3]
+        l1_ports = []
+        if self._cu_per_sqc_tlb is not None:
+            l1_ports += self._create_shared_inst_tlbs(device)
+        for cu in self.CUs:
+            l1_ports += cu.get_tlb_ports()
+        for port in l1_ports:
+            self.l2_coalescer.cpu_side_ports = port
+        self.l2_coalescer.mem_side_ports = self.l2_tlb.cpu_side_ports
+
+        if not self._l3_tlb:
+            self._gpu_dma_ports.append(self.l2_tlb.walker.port)
+            return
 
         self.l3_tlb = VegaGPUTLB(
             gpu_device=device,
@@ -358,13 +482,10 @@ class ViperShader(Shader):
             maxOutstandingReqs=64,
         )
 
-        self.l3_coalescer = VegaTLBCoalescer(tlb_level=3)
+        self.l3_coalescer = VegaTLBCoalescer(
+            tlb_level=3, downstream_tlb=self.l3_tlb
+        )
 
-        # Port flow: [L1s] -> L2 coalescer -> L2 tlb -> L3 coalescer -> L3 tlb
-        for cu in self.CUs:
-            for port in cu.get_tlb_ports():
-                self.l2_coalescer.cpu_side_ports = port
-        self.l2_coalescer.mem_side_ports = self.l2_tlb.cpu_side_ports
         self.l2_tlb.mem_side_ports = self.l3_coalescer.cpu_side_ports
         self.l3_coalescer.mem_side_ports = self.l3_tlb.cpu_side_ports
 

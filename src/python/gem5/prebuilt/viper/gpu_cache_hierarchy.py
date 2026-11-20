@@ -28,6 +28,10 @@
 # POSSIBILITY OF SUCH DAMAGE.
 
 import math
+from typing import (
+    Callable,
+    Optional,
+)
 
 from m5.objects import (
     AddrRange,
@@ -87,10 +91,25 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
         cu_per_sqc: int,
         cache_line_size: int,
         shader: ViperShader,
+        cu_per_scalar_cache: Optional[int] = None,
+        fabric_clock: str = "1801MHz",
+        gpu_clock: Optional[str] = None,
+        network_factory: Optional[Callable] = None,
+        num_virtual_networks: int = 6,
     ):
         """
         :param size: The size of each cache in the heirarchy.
         :param assoc: The associativity of each cache.
+        :param cu_per_scalar_cache: CUs sharing one scalar cache. Defaults to
+            cu_per_sqc.
+        :param fabric_clock: Clock of the network, directories (L3) and DMA
+            controllers.
+        :param gpu_clock: Clock of the CU caches (TCP, SQC, scalar) and L2
+            (TCC), which sit inside the XCD. Defaults to fabric_clock.
+        :param network_factory: Called with the RubySystem to create the GPU
+            network. Defaults to SimpleDoubleCrossbar.
+        :param num_virtual_networks: Virtual networks of the GPU network
+            (VIPER needs at least 6).
         """
         super().__init__()
 
@@ -113,11 +132,13 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
         self.ruby_gpu.block_size_bytes = cache_line_size
 
         # Ruby network for this GPU
-        self.ruby_gpu.network = SimpleDoubleCrossbar(self.ruby_gpu)
+        if network_factory is None:
+            network_factory = SimpleDoubleCrossbar
+        self.ruby_gpu.network = network_factory(self.ruby_gpu)
 
-        # VIPER uses 6 virtual networks.
-        self.ruby_gpu.number_of_virtual_networks = 6
-        self.ruby_gpu.network.number_of_virtual_networks = 6
+        # VIPER uses at least 6 virtual networks.
+        self.ruby_gpu.number_of_virtual_networks = num_virtual_networks
+        self.ruby_gpu.network.number_of_virtual_networks = num_virtual_networks
 
         # There is a single local list of all of the controllers to make it
         # easier to connect everything to the GPU network. This can be
@@ -131,13 +152,26 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
         self._mem_ctrls = []
 
         self.clk_domain = SrcClockDomain(
-            clock="1801MHz",
+            clock=fabric_clock,
             voltage_domain=VoltageDomain(),
         )
+        if gpu_clock is None:
+            xcd_clk_domain = self.clk_domain
+        else:
+            self.gpu_clk_domain = SrcClockDomain(
+                clock=gpu_clock,
+                voltage_domain=VoltageDomain(),
+            )
+            xcd_clk_domain = self.gpu_clk_domain
 
         # Variables used by multiple objects are defined once here
         tcc_bits = int(math.log(tcc_count, 2))
         deadlock_threshold = 500000
+        # Sets are indexed above the line offset (RubyCache defaults to bit
+        # 6, i.e. 64 B lines). The TCC is also selected by the tcc_bits above
+        # the line offset, which are constant within one TCC.
+        line_bits = int(math.log(cache_line_size, 2))
+        tcc_index_bit = line_bits + tcc_bits
 
         # Create one TCP per CU
         compute_units = shader.get_compute_units()
@@ -150,6 +184,7 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
             )
 
             tcp.version = idx
+            tcp.L1cache.start_index_bit = line_bits
 
             tcp.sequencer = RubySequencer(
                 version=self.seqCount(),
@@ -177,7 +212,7 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
             tcp.TCC_select_num_bits = tcc_bits
             tcp.use_seq_not_coal = False
             tcp.issue_latency = 1
-            tcp.clk_domain = self.clk_domain
+            tcp.clk_domain = xcd_clk_domain
             tcp.recycle_latency = 10
             tcp.WB = False
             tcp.disableL1 = False
@@ -199,6 +234,7 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
             )
 
             sqc.version = idx
+            sqc.L1cache.start_index_bit = line_bits
 
             sqc.sequencer = VIPERSequencer(
                 version=self.seqCount(),
@@ -217,12 +253,15 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
 
             sqc.ruby_system = self.ruby_gpu
             sqc.TCC_select_num_bits = tcc_bits
-            sqc.clk_domain = self.clk_domain
+            sqc.clk_domain = xcd_clk_domain
             sqc.recycle_latency = 10
 
             self._sqc_controllers.append(sqc)
 
-        num_scalars = num_sqcs
+        if cu_per_scalar_cache is None:
+            cu_per_scalar_cache = cu_per_sqc
+        assert (num_cus % cu_per_scalar_cache) == 0
+        num_scalars = num_cus // cu_per_scalar_cache
         for idx in range(num_scalars):
             scalar = SQCCache(
                 sqc_size=self._scalar_size,
@@ -233,6 +272,7 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
 
             # Scalar uses same controller as SQC, so add SQC count
             scalar.version = idx + num_sqcs
+            scalar.L1cache.start_index_bit = line_bits
 
             scalar.sequencer = VIPERSequencer(
                 version=self.seqCount(),
@@ -243,15 +283,15 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
                 deadlock_threshold=deadlock_threshold,
             )
 
-            # Scalar cache is shared across {cu_per_sqc} CUs.
-            cu_base = cu_per_sqc * idx
-            for cu_num in range(cu_per_sqc):
+            # Scalar cache is shared across {cu_per_scalar_cache} CUs.
+            cu_base = cu_per_scalar_cache * idx
+            for cu_num in range(cu_per_scalar_cache):
                 cu_id = cu_base + cu_num
                 compute_units[cu_id].scalar_port = scalar.sequencer.in_ports
 
             scalar.ruby_system = self.ruby_gpu
             scalar.TCC_select_num_bits = tcc_bits
-            scalar.clk_domain = self.clk_domain
+            scalar.clk_domain = xcd_clk_domain
             scalar.recycle_latency = 10
 
             self._scalar_controllers.append(scalar)
@@ -266,10 +306,11 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
             )
 
             tcc.version = idx
+            tcc.L2cache.start_index_bit = tcc_index_bit
 
             tcc.ruby_system = self.ruby_gpu
             tcc.WB = False
-            tcc.clk_domain = self.clk_domain
+            tcc.clk_domain = xcd_clk_domain
             tcc.recycle_latency = 10
 
             self._tcc_controllers.append(tcc)
@@ -313,6 +354,12 @@ class ViperGPUCacheHierarchy(AbstractRubyCacheHierarchy):
                 dataAccessLatency=20,
                 tagAccessLatency=15,
             )
+            # Index the L3 above the interleave bits that select this
+            # directory, which are constant for every line it holds.
+            if addr_range.masks:
+                dir.L3CacheMemory.start_index_bit = max(
+                    (m & -m).bit_length() for m in addr_range.masks
+                )
 
         # Number of sequencers = one per TCP, SQC, and Scalar + one per DMA.
         self.ruby_gpu.num_of_sequencers = (

@@ -170,3 +170,94 @@ class SimpleDoubleCrossbar(SimpleNetwork):
 
         # Finalize network int_links for unproxy
         self.int_links = int_links
+
+
+class SimpleCrossbar(SimpleNetwork):
+    """
+    GPU network with one router per controller and a single central crossbar
+    router, using SimpleNetwork. Every controller reaches every other one in
+    two internal hops (its router -> crossbar -> destination router).
+
+    Link widths (``bandwidth_factor``, bytes per network cycle):
+
+    * ``link_width_bytes``: default for every link.
+    * ``dir_link_width_bytes``: if set, the external link of each GPU
+      directory and both internal links of its router (the L2 <-> IOD side).
+    * ``xcd_clock_ratio``: if set, the links of the TCP, SQC and TCC
+      controllers and their routers are scaled by this factor. The network
+      runs on the fabric clock while these caches sit inside the XCD on the
+      GPU clock, so the factor gpu_clock / fabric_clock keeps their width per
+      GPU cycle.
+    """
+
+    def __init__(
+        self,
+        ruby_system,
+        link_width_bytes: int = 16,
+        dir_link_width_bytes: int = None,
+        xcd_clock_ratio: float = None,
+        link_latency: int = 1,
+    ):
+        super().__init__()
+        self.netifs = []
+
+        self.ruby_system = ruby_system
+        self._link_width_bytes = link_width_bytes
+        self._dir_link_width_bytes = dir_link_width_bytes
+        self._xcd_clock_ratio = xcd_clock_ratio
+        self._link_latency = link_latency
+
+    def connect(self, controllers):
+        dir_types = ("GPU_VIPER_Directory_Controller",)
+        xcd_types = (
+            "GPU_VIPER_TCP_Controller",
+            "GPU_VIPER_SQC_Controller",
+            "GPU_VIPER_TCC_Controller",
+        )
+
+        def width(ctrl):
+            w = self._link_width_bytes
+            if ctrl.type in dir_types and self._dir_link_width_bytes:
+                w = self._dir_link_width_bytes
+            if ctrl.type in xcd_types and self._xcd_clock_ratio:
+                w = round(w * self._xcd_clock_ratio)
+            return w
+
+        # One router per controller plus the crossbar router (last).
+        routers = [Switch(router_id=i) for i in range(len(controllers) + 1)]
+        self.routers = routers
+        xbar = routers[-1]
+
+        self.ext_links = [
+            SimpleExtLink(
+                link_id=i,
+                ext_node=c,
+                int_node=routers[i],
+                latency=self._link_latency,
+                bandwidth_factor=width(c),
+            )
+            for i, c in enumerate(controllers)
+        ]
+
+        int_links = []
+        for i, c in enumerate(controllers):
+            int_links.append(
+                SimpleIntLink(
+                    link_id=len(controllers) + len(int_links),
+                    src_node=routers[i],
+                    dst_node=xbar,
+                    latency=self._link_latency,
+                    bandwidth_factor=width(c),
+                )
+            )
+        for i, c in enumerate(controllers):
+            int_links.append(
+                SimpleIntLink(
+                    link_id=len(controllers) + len(int_links),
+                    src_node=xbar,
+                    dst_node=routers[i],
+                    latency=self._link_latency,
+                    bandwidth_factor=width(c),
+                )
+            )
+        self.int_links = int_links
