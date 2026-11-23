@@ -119,6 +119,7 @@ void
 GPUDispatcher::dispatch(HSAQueueEntry *task)
 {
     ++stats.numKernelLaunched;
+    ++kernelsInFlight;
 
     if (kernelExitEvents) {
         exitSimLoopNow("GPU Kernel Started");
@@ -319,6 +320,8 @@ GPUDispatcher::notifyWgCompl(Wavefront *wf)
             curTick(), wf->wgId, kern_id, wf->computeUnit->cu_id);
 
     if (task->numWgCompleted() == task->numWgTotal()) {
+        --kernelsInFlight;
+        assert(kernelsInFlight >= 0);
         // Notify the HSA PP that this kernel is complete
         gpuCmdProc->hsaPacketProc().finishPkt(task->dispPktPtr(),
                                               task->queueId());

@@ -86,7 +86,11 @@ class GPUDispatcher : public SimObject
         return kernelExitEvents;
     }
 
+    /** Kernels dispatched whose workgroups have not all completed. */
+    int numKernelsInFlight() const { return kernelsInFlight; }
+
   private:
+    int kernelsInFlight = 0;
     Shader *shader;
     GPUCommandProcessor *gpuCmdProc;
     EventFunctionWrapper tickEvent;
