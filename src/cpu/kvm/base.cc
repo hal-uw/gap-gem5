@@ -1106,8 +1106,7 @@ BaseKvmCPU::handleKvmExit()
         return 0;
 
       case KVM_EXIT_INTERNAL_ERROR:
-        panic("KVM: Internal error (suberror: %u)\n",
-              _kvmRun->internal.suberror);
+        return handleKvmExitInternalError();
 
       default:
         dump();
@@ -1160,6 +1159,13 @@ BaseKvmCPU::handleKvmExitFailEntry()
     dump();
     panic("KVM: Failed to enter virtualized mode (hw reason: 0x%llx)\n",
           _kvmRun->fail_entry.hardware_entry_failure_reason);
+}
+
+Tick
+BaseKvmCPU::handleKvmExitInternalError()
+{
+    panic("KVM: Internal error (suberror: %u)\n",
+          _kvmRun->internal.suberror);
 }
 
 Tick

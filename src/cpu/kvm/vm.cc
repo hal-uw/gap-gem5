@@ -648,6 +648,16 @@ KvmVM::kvmArmPreferredTarget(struct kvm_vcpu_init &target) const
 }
 #endif
 
+bool
+KvmVM::enableCap(uint32_t cap, uint64_t arg0)
+{
+    struct kvm_enable_cap kcap;
+    std::memset(&kcap, 0, sizeof(kcap));
+    kcap.cap = cap;
+    kcap.args[0] = arg0;
+    return ioctl(KVM_ENABLE_CAP, (void *)&kcap) != -1;
+}
+
 int
 KvmVM::ioctl(int request, long p1) const
 {

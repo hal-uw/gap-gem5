@@ -330,6 +330,15 @@ class KvmVM : public SimObject
     void coalesceMMIO(Addr start, int size);
 
     /**
+     * Enable a VM capability (KVM_ENABLE_CAP on the VM file descriptor).
+     *
+     * @param cap Capability (KVM_CAP_*)
+     * @param arg0 First capability argument
+     * @return true on success
+     */
+    bool enableCap(uint32_t cap, uint64_t arg0);
+
+    /**
      * Request coalescing MMIO for a memory range.
      *
      * @param range Coalesced MMIO range

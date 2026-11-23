@@ -533,6 +533,18 @@ class BaseKvmCPU : public BaseCPU
      * @return Number of ticks delay the next CPU tick
      */
     virtual Tick handleKvmExitFailEntry();
+
+    /**
+     * KVM reported an internal error (KVM_EXIT_INTERNAL_ERROR), e.g. an
+     * instruction its emulator cannot handle when the VM has
+     * KVM_CAP_EXIT_ON_EMULATION_FAILURE enabled.
+     *
+     * The default implementation panics. Architecture dependent
+     * implementations may handle some cases.
+     *
+     * @return Number of ticks delay the next CPU tick
+     */
+    virtual Tick handleKvmExitInternalError();
     /** @} */
 
     /**
