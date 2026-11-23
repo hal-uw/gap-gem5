@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstring>
 #include <memory>
 
 #include "arch/x86/cpuid.hh"
@@ -571,7 +572,8 @@ checkSeg(const char *name, const int idx, const struct kvm_segment &seg,
 
 X86KvmCPU::X86KvmCPU(const X86KvmCPUParams &params)
     : BaseKvmCPU(params),
-      useXSave(params.useXSave)
+      useXSave(params.useXSave),
+      emulateMMIOFallback(params.emulate_mmio_fallback)
 {}
 
 void
@@ -613,6 +615,22 @@ X86KvmCPU::startup()
     BaseKvmCPU::startup();
 
     updateCPUID();
+
+    // Let gem5 execute the MMIO accesses KVM's emulator cannot decode
+    // (see handleKvmExitInternalError). The capability is per VM; enabling
+    // it again from another vCPU is harmless.
+    if (emulateMMIOFallback) {
+        if (!system->isAtomicMode()) {
+            warn("KVM: MMIO emulation fallback needs an atomic memory mode; "
+                 "disabled.\n");
+            emulateMMIOFallback = false;
+        } else if (!vm->enableCap(KVM_CAP_EXIT_ON_EMULATION_FAILURE, 1)) {
+            // Fails (EINVAL) on hosts without the capability.
+            warn("KVM: KVM_CAP_EXIT_ON_EMULATION_FAILURE unavailable; guest "
+                 "MMIO accesses KVM cannot emulate will raise #UD.\n");
+            emulateMMIOFallback = false;
+        }
+    }
 
     // TODO: Do we need to create an identity mapped TSS area? We
     // should call kvm.vm.setTSSAddress() here in that case. It should
@@ -1443,6 +1461,303 @@ X86KvmCPU::handleKvmExitIO()
     }
 
     return delay;
+}
+
+Tick
+X86KvmCPU::handleKvmExitInternalError()
+{
+    const auto &ef = getKvmRunState()->emulation_failure;
+    if (!emulateMMIOFallback || ef.suberror != KVM_INTERNAL_ERROR_EMULATION)
+        return BaseKvmCPU::handleKvmExitInternalError();
+
+    const bool have_bytes =
+        ef.flags & KVM_INTERNAL_ERROR_EMULATION_FLAG_INSTRUCTION_BYTES;
+    const unsigned len = have_bytes ? std::min<unsigned>(ef.insn_size, 15) : 0;
+    std::string bytes;
+    for (unsigned i = 0; i < len; i++)
+        bytes += csprintf("%02x ", ef.insn_bytes[i]);
+
+    Tick delay = 0;
+    if (len && emulateFailedInstruction(ef.insn_bytes, len, delay)) {
+        DPRINTF(KvmIO, "KVM: executed instruction KVM could not emulate: "
+                "%s\n", bytes);
+        // doMMIOAccess could have suspended the thread.
+        if (_status != Idle)
+            _status = dataPort.nextIOState();
+        return delay;
+    }
+
+    // Not supported: do what KVM does without the capability, i.e.
+    // inject #UD in user mode and fail in kernel mode.
+    struct kvm_sregs sregs;
+    getSpecialRegisters(sregs);
+    if ((sregs.cs.selector & 3) == 3) {
+        warn("KVM: cannot emulate guest instruction [ %s] at user RIP; "
+             "injecting #UD.\n", bytes);
+        struct kvm_vcpu_events events;
+        getVCpuEvents(events);
+        events.flags = 0; // leave NMI, SIPI, SMM, ... state alone
+        events.exception.injected = 1;
+        events.exception.nr = 6; // #UD
+        events.exception.has_error_code = 0;
+        events.exception.error_code = 0;
+        setVCpuEvents(events);
+        return 0;
+    }
+    dump();
+    panic("KVM: kernel instruction KVM cannot emulate: [ %s]\n", bytes);
+}
+
+bool
+X86KvmCPU::emulateFailedInstruction(const uint8_t *insn, unsigned len,
+                                    Tick &delay)
+{
+    struct kvm_regs regs;
+    struct kvm_sregs sregs;
+    getRegisters(regs);
+    getSpecialRegisters(sregs);
+    if (!sregs.cs.l) // 64-bit code only
+        return false;
+
+    // Legacy prefixes.
+    unsigned p = 0;
+    bool addr32 = false;
+    uint8_t pp = 0; // implied prefix: 0 none, 1 66, 2 F3, 3 F2
+    bool opsize = false;
+    uint8_t rep = 0; // last F2/F3
+    uint64_t seg_base = 0;
+    for (; p < len; p++) {
+        const uint8_t b = insn[p];
+        if (b == 0x26 || b == 0x2e || b == 0x36 || b == 0x3e) {
+            continue; // CS/DS/ES/SS segments are null in 64-bit mode
+        } else if (b == 0x66) {
+            opsize = true;
+        } else if (b == 0x67) {
+            addr32 = true;
+        } else if (b == 0xf2 || b == 0xf3) {
+            rep = b;
+        } else if (b == 0x64) {
+            seg_base = sregs.fs.base;
+        } else if (b == 0x65) {
+            seg_base = sregs.gs.base;
+        } else {
+            break;
+        }
+    }
+
+    // REX or VEX, then the opcode (map 0F only).
+    bool vex = false, rex_r = false, rex_x = false, rex_b = false;
+    bool vex_l = false;
+    uint8_t op;
+    if (p + 2 < len && (insn[p] == 0xc5 || insn[p] == 0xc4)) {
+        // VEX: no legacy 66/F2/F3/REX may precede it.
+        if (opsize || rep || !useXSave)
+            return false;
+        vex = true;
+        if (insn[p] == 0xc5) {
+            const uint8_t b1 = insn[p + 1];
+            rex_r = !(b1 & 0x80);
+            vex_l = b1 & 0x04;
+            pp = b1 & 3;
+            p += 2;
+        } else {
+            const uint8_t b1 = insn[p + 1], b2 = insn[p + 2];
+            if ((b1 & 0x1f) != 1) // map 0F only
+                return false;
+            rex_r = !(b1 & 0x80);
+            rex_x = !(b1 & 0x40);
+            rex_b = !(b1 & 0x20);
+            vex_l = b2 & 0x04;
+            pp = b2 & 3;
+            p += 3;
+        }
+        if (p >= len)
+            return false;
+        op = insn[p++];
+    } else {
+        if (p < len && (insn[p] & 0xf0) == 0x40) {
+            rex_r = insn[p] & 4;
+            rex_x = insn[p] & 2;
+            rex_b = insn[p] & 1;
+            p++;
+        }
+        if (p + 2 > len || insn[p] != 0x0f)
+            return false;
+        op = insn[p + 1];
+        p += 2;
+        pp = rep == 0xf3 ? 2 : rep == 0xf2 ? 3 : opsize ? 1 : 0;
+    }
+
+    // Supported moves between an XMM/YMM register and memory.
+    const unsigned vlen = vex_l ? 32 : 16;
+    unsigned size;
+    bool store;
+    switch (op) {
+      case 0x10: // (v)movups/movupd/movss/movsd load
+      case 0x11: // ... store
+        store = op == 0x11;
+        size = pp == 2 ? 4 : pp == 3 ? 8 : vlen;
+        break;
+      case 0x28: // (v)movaps/movapd load
+      case 0x29: // ... store
+        if (pp > 1)
+            return false;
+        store = op == 0x29;
+        size = vlen;
+        break;
+      case 0x6f: // (v)movdqa/movdqu load
+      case 0x7f: // ... store
+        if (pp != 1 && pp != 2) // 66 / F3; no prefix is MMX
+            return false;
+        store = op == 0x7f;
+        size = vlen;
+        break;
+      case 0x2b: // (v)movntps/movntpd store
+        if (pp > 1)
+            return false;
+        store = true;
+        size = vlen;
+        break;
+      case 0xe7: // (v)movntdq store
+        if (pp != 1)
+            return false;
+        store = true;
+        size = vlen;
+        break;
+      default:
+        return false;
+    }
+
+    if (p >= len)
+        return false;
+    const uint8_t modrm = insn[p++];
+    const unsigned mod = modrm >> 6;
+    const unsigned xmm = ((modrm >> 3) & 7) | (rex_r ? 8 : 0);
+    const unsigned rm = modrm & 7;
+    if (mod == 3) // register form: not a memory access
+        return false;
+
+    const uint64_t gpr[16] = {
+        regs.rax, regs.rcx, regs.rdx, regs.rbx, regs.rsp, regs.rbp,
+        regs.rsi, regs.rdi, regs.r8, regs.r9, regs.r10, regs.r11,
+        regs.r12, regs.r13, regs.r14, regs.r15};
+
+    uint64_t ea = 0;
+    bool rip_rel = false, disp32 = mod == 2;
+    if (rm == 4) { // SIB
+        if (p >= len)
+            return false;
+        const uint8_t sib = insn[p++];
+        const unsigned index = ((sib >> 3) & 7) | (rex_x ? 8 : 0);
+        const unsigned base = (sib & 7) | (rex_b ? 8 : 0);
+        if (index != 4)
+            ea += gpr[index] << (sib >> 6);
+        if ((base & 7) == 5 && mod == 0)
+            disp32 = true; // no base register
+        else
+            ea += gpr[base];
+    } else if (rm == 5 && mod == 0) {
+        rip_rel = true;
+        disp32 = true;
+    } else {
+        ea += gpr[rm | (rex_b ? 8 : 0)];
+    }
+    int64_t disp = 0;
+    if (mod == 1) {
+        if (p + 1 > len)
+            return false;
+        disp = (int8_t)insn[p++];
+    } else if (disp32) {
+        if (p + 4 > len)
+            return false;
+        int32_t d;
+        std::memcpy(&d, insn + p, 4);
+        disp = d;
+        p += 4;
+    }
+    // p is now the instruction length.
+    if (rip_rel)
+        ea = regs.rip + p + disp;
+    else
+        ea += disp;
+    if (addr32)
+        ea &= 0xffffffffULL;
+    ea += seg_base;
+
+    // Translate every piece first, so nothing is accessed if one fails.
+    struct Piece { Addr paddr; unsigned off, size; };
+    std::vector<Piece> pieces;
+    for (unsigned off = 0; off < size;) {
+        const uint64_t lin = ea + off;
+        const unsigned n = std::min<uint64_t>(
+            {(uint64_t)size - off, 8, 0x1000 - (lin & 0xfff)});
+        struct kvm_translation tr;
+        std::memset(&tr, 0, sizeof(tr));
+        tr.linear_address = lin;
+        if (ioctl(KVM_TRANSLATE, (void *)&tr) == -1 || !tr.valid ||
+            (store && !tr.writeable))
+            return false;
+        pieces.push_back({(Addr)tr.physical_address, off, n});
+        off += n;
+    }
+
+    // Register state, modified in place so nothing else changes. The
+    // low 128 bits of a YMM register are in the legacy (FXSAVE) area,
+    // the high 128 bits in the AVX component of the standard-format
+    // XSAVE area.
+    constexpr unsigned xsave_avx_offset = 576;
+    struct kvm_xsave kxsave;
+    struct kvm_fpu fpu;
+    uint8_t *lo, *hi = nullptr;
+    XSaveHeader *hdr = nullptr;
+    if (useXSave) {
+        getXSave(kxsave);
+        lo = ((FXSave *)kxsave.region)->xmm[xmm];
+        hdr = (XSaveHeader *)((char *)&kxsave + sizeof(FXSave));
+        hi = (uint8_t *)kxsave.region + xsave_avx_offset + 16 * xmm;
+    } else {
+        getFPUState(fpu);
+        lo = fpu.xmm[xmm];
+    }
+
+    uint8_t data[32] = {};
+    if (store) {
+        // A component in its initial state (xstate_bv bit clear) is zero.
+        if (!useXSave || hdr->xstate_bv.sse)
+            std::memcpy(data, lo, 16);
+        if (size > 16 && hdr->xstate_bv.avx)
+            std::memcpy(data + 16, hi, 16);
+    }
+    for (const auto &piece : pieces)
+        delay += doMMIOAccess(piece.paddr, data + piece.off, piece.size,
+                              store);
+
+    if (!store) {
+        // Loads from memory zero the rest of the XMM register (movss,
+        // movsd); VEX-encoded loads also zero the upper YMM half.
+        std::memset(lo, 0, 16);
+        std::memcpy(lo, data, std::min(size, 16u));
+        if (useXSave) {
+            hdr->xstate_bv.sse = 1;
+            if (vex) {
+                std::memset(hi, 0, 16);
+                if (size > 16)
+                    std::memcpy(hi, data + 16, 16);
+                hdr->xstate_bv.avx = 1;
+            }
+            setXSave(kxsave);
+        } else {
+            setFPUState(fpu);
+        }
+    }
+
+    regs.rip += p;
+    setRegisters(regs);
+
+    // doMMIOAccess synced KVM state to the thread context; it is stale
+    // now.
+    kvmStateDirty = true;
+    return true;
 }
 
 Tick

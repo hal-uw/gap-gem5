@@ -162,6 +162,16 @@ class X86KvmCPU : public BaseKvmCPU
     Tick handleKvmExitIRQWindowOpen() override;
 
     /**
+     * Handle KVM internal errors. With KVM_CAP_EXIT_ON_EMULATION_FAILURE,
+     * KVM exits here (instead of injecting #UD) when its instruction
+     * emulator cannot decode an instruction, typically a guest access to
+     * MMIO (a device BAR) with an SSE instruction. Supported instructions
+     * are executed by emulateFailedInstruction(); others get the
+     * behavior KVM has without the capability.
+     */
+    Tick handleKvmExitInternalError() override;
+
+    /**
      * Check if there are pending events in the vCPU that prevents it
      * from being drained.
      *
@@ -271,6 +281,25 @@ class X86KvmCPU : public BaseKvmCPU
     /** Kvm::capXCRs() available? */
     bool haveXCRs;
     /** @} */
+
+    /**
+     * Execute an instruction that KVM's emulator failed to decode.
+     * Supports, in 64-bit mode, the legacy and VEX (128/256-bit) memory
+     * forms of the SSE/AVX moves: (v)movups/movupd/movss/movsd,
+     * (v)movaps/movapd, (v)movdqa/movdqu, (v)movntps/movntpd/movntdq.
+     * The access goes through doMMIOAccess(); the XMM/YMM register and
+     * RIP are updated in place in KVM.
+     *
+     * @param insn Instruction bytes reported by KVM
+     * @param len Number of valid bytes in insn
+     * @param delay Set to the MMIO access delay
+     * @return true if the instruction was executed
+     */
+    bool emulateFailedInstruction(const uint8_t *insn, unsigned len,
+                                  Tick &delay);
+
+    /** KVM_CAP_EXIT_ON_EMULATION_FAILURE enabled; see the parameter. */
+    bool emulateMMIOFallback;
 };
 
 } // namespace gem5

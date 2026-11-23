@@ -48,3 +48,10 @@ class X86KvmCPU(BaseKvmCPU, X86CPU):
     ]
 
     useXSave = Param.Bool(True, "Use XSave to synchronize FPU/SIMD registers")
+    emulate_mmio_fallback = Param.Bool(
+        True,
+        "Execute MMIO accesses that the host KVM's instruction emulator "
+        "cannot decode (e.g. SSE movss/movsd to a device BAR) in gem5 "
+        "instead of letting KVM inject #UD into the guest. Needs "
+        "KVM_CAP_EXIT_ON_EMULATION_FAILURE and an atomic memory mode.",
+    )
