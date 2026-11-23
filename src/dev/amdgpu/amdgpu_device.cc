@@ -41,6 +41,7 @@
 #include "dev/amdgpu/sdma_engine.hh"
 #include "dev/hsa/hw_scheduler.hh"
 #include "gpu-compute/gpu_command_processor.hh"
+#include "gpu-compute/dispatcher.hh"
 #include "gpu-compute/shader.hh"
 #include "mem/abstract_mem.hh"
 #include "mem/packet.hh"
@@ -653,9 +654,25 @@ AMDGPUDevice::writeFrame(PacketPtr pkt, Addr offset)
     DPRINTF(AMDGPUDevice, "Wrote framebuffer address %#lx (size %d)\n", offset,
             pkt->getSize());
 
-    for (auto &cu : CP()->shader()->cuList) {
-        Addr aligned_addr = offset & ~(gpuMemMgr->getCacheLineSize() - 1);
-        cu->sendInvL2(aligned_addr);
+    /*
+     * Invalidate the line in the GPU caches. An InvL2 sent through a CU
+     * invalidates that CU's L1 (TCP) line and the shared L2 (TCC) line, so
+     * while a kernel runs every CU sends one. Without a kernel in flight
+     * the L1s hold nothing a kernel could use before the next kernel
+     * launch invalidates them all (impl_kern_launch_acq), so one request
+     * for the shared L2 line is enough. The per-CU loop sent 38 identical
+     * TCC invalidations per CPU write and made a CPU memcpy into VRAM (e.g.
+     * a code object load) crawl through the Ruby network.
+     */
+    Addr aligned_addr = offset & ~(gpuMemMgr->getCacheLineSize() - 1);
+    Shader *shader = CP()->shader();
+    if (shader->impl_kern_launch_acq &&
+        shader->dispatcher().numKernelsInFlight() == 0) {
+        shader->cuList[0]->sendInvL2(aligned_addr);
+    } else {
+        for (auto &cu : shader->cuList) {
+            cu->sendInvL2(aligned_addr);
+        }
     }
 
     Addr aperture = gpuvm.getFrameAperture(offset);
